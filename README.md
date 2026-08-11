@@ -35,9 +35,11 @@ Lightweight personal expense tracking and financial planning app that makes ever
    ```
    Fill in `DATABASE_URL` (Neon), `GEMINI_API_KEY`, `CLOUDINARY_*`, and `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`. See comments in `.env.example` for where to get each value.
 
-3. Build and start all services
+3. Start everything once to build the images
    ```bash
-   docker compose up --build
+   make up &      # terminal 1 (infra: redis)
+   make backend   # terminal 2
+   make frontend  # terminal 3
    ```
 
 4. Verify
@@ -46,22 +48,15 @@ Lightweight personal expense tracking and financial planning app that makes ever
 
 ## Daily use
 
-```bash
-docker compose up          # start (no rebuild)
-docker compose up --build  # rebuild after changing requirements.txt / package.json
-docker compose down        # stop
-docker compose logs -f backend   # tail backend logs
-docker compose exec backend bash # shell into backend container
-```
+Four terminals, each owning one job — restarting/rebuilding one never touches the others:
 
-## Testing
+| Terminal | Command | Purpose |
+|---|---|---|
+| 1 | `make up` | Steady-state infra (redis). Leave running. |
+| 2 | `make backend` | FastAPI, `--reload` on. Ctrl+C / rerun to restart, rebuilds on `requirements.txt` changes. |
+| 3 | `make frontend` | Next.js dev server. Ctrl+C / rerun to restart, rebuilds on `package.json` changes. |
+| 4 | `make test` | One-shot: pytest + ruff + eslint + Next build — same checks CI runs. |
 
-```bash
-docker compose exec backend pip install -r requirements-dev.txt  # once, adds pytest/ruff
-docker compose exec backend pytest -v
-docker compose exec backend ruff check .
-docker compose exec frontend npm run lint
-docker compose exec frontend npm run build
-```
+Other handy commands: `docker compose logs -f backend`, `docker compose exec backend bash`, `docker compose down` (stops everything).
 
-CI (`.github/workflows/ci.yml`) runs the same checks on every push/PR to `main`.
+CI (`.github/workflows/ci.yml`) runs the same checks as `make test` on every push/PR to `main`.

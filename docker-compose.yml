@@ -1,5 +1,18 @@
 services:
+  # Steady-state infra — kept running in its own terminal via `docker compose up`.
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # `profiles: [dev]` keeps these out of a plain `docker compose up`, so backend
+  # and frontend live in their own terminals: `docker compose up backend` /
+  # `docker compose up frontend`. Naming a profiled service explicitly always
+  # starts it (and its dependencies) regardless of profile activation.
   backend:
+    profiles: ["dev"]
     build: ./backend
     ports:
       - "8000:8000"
@@ -12,6 +25,7 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   frontend:
+    profiles: ["dev"]
     build: ./frontend
     ports:
       - "3000:3000"
@@ -21,13 +35,6 @@ services:
     env_file:
       - .env
     command: npm run dev
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
 
 volumes:
   frontend_node_modules:
