@@ -1,6 +1,8 @@
 # SnapLedger
 
-AI-powered personal expense tracker. Snap a receipt photo, get it auto-parsed and logged, share a ledger with up to 5 people.
+[![CI](https://github.com/ZzHotte/SnapLedger/actions/workflows/ci.yml/badge.svg)](https://github.com/ZzHotte/SnapLedger/actions/workflows/ci.yml)
+
+Lightweight personal expense tracking and financial planning app that makes everyday budgeting easier. Simply snap a photo of a receipt and let AI extract key transaction details for review and quick logging. Create personal or shared ledgers with up to five friends or family members, track spending patterns through interactive summaries, and gain clearer insights into where your money goes.
 
 ## Stack
 
@@ -12,14 +14,13 @@ AI-powered personal expense tracker. Snap a receipt photo, get it auto-parsed an
 | Cache | Redis 7 |
 | AI | Gemini API |
 | Image storage | Cloudinary |
-| Auth | Google OAuth |
+| Auth | Google OAuth · Email/password (JWT) |
 | Runtime | Docker 29.6.2 · Docker Compose v5.3.1 |
 
 ## Prerequisites
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (includes Docker Compose)
 
-No local Node.js or Python install required — everything runs in containers.
 
 ## Setup
 
@@ -52,3 +53,15 @@ docker compose down        # stop
 docker compose logs -f backend   # tail backend logs
 docker compose exec backend bash # shell into backend container
 ```
+
+## Testing
+
+```bash
+docker compose exec backend pip install -r requirements-dev.txt  # once, adds pytest/ruff
+docker compose exec backend pytest -v
+docker compose exec backend ruff check .
+docker compose exec frontend npm run lint
+docker compose exec frontend npm run build
+```
+
+CI (`.github/workflows/ci.yml`) runs the same checks on every push/PR to `main`.
