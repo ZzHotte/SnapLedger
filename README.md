@@ -7,56 +7,130 @@ Lightweight personal expense tracking and financial planning app that makes ever
 ## Stack
 
 | Layer | Tech |
-|---|---|
+| --- | --- |
 | Frontend | Next.js 16.3.0 · React 19.2.8 · TypeScript · Tailwind CSS 4 |
 | Backend | FastAPI 0.115.0 · Python 3.12 · Uvicorn 0.32.0 |
-| Database | PostgreSQL (Neon, managed) |
+| Database | PostgreSQL (Neon) |
 | Cache | Redis 7 |
 | AI | Gemini API |
-| Image storage | Cloudinary |
+| Image Storage | Cloudinary |
 | Auth | Google OAuth · Email/password (JWT) |
 | Runtime | Docker 29.6.2 · Docker Compose v5.3.1 |
 
-## Prerequisites
+## Getting Started
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (includes Docker Compose)
+### Prerequisite
 
+Install [Docker Desktop](https://www.docker.com/products/docker-desktop/), which includes Docker Compose.
 
-## Setup
+### 1. Clone the repository
 
-1. Clone the repo and enter the project directory
-   ```bash
-   git clone https://github.com/ZzHotte/SnapLedger.git && cd SnapLedger
-   ```
+```bash
+git clone https://github.com/ZzHotte/SnapLedger.git
+cd SnapLedger
+````
 
-2. Copy the env template and fill in real credentials
-   ```bash
-   cp .env.example .env
-   ```
-   Fill in `DATABASE_URL` (Neon), `GEMINI_API_KEY`, `CLOUDINARY_*`, and `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`. See comments in `.env.example` for where to get each value.
+### 2. Configure environment variables
 
-3. Start everything once to build the images
-   ```bash
-   make up &      # terminal 1 (infra: redis)
-   make backend   # terminal 2
-   make frontend  # terminal 3
-   ```
+```Bash
+cp .env.example .env
+```
 
-4. Verify
-   - Frontend: [http://localhost:3000](http://localhost:3000)
-   - Backend health check: [http://localhost:8000/health](http://localhost:8000/health) → `{"status": "ok"}`
+Add your credentials to `.env`, including:
 
-## Daily use
+* `DATABASE_URL`
+* `GEMINI_API_KEY`
+* `CLOUDINARY_*`
+* `GOOGLE_CLIENT_ID`
+* `GOOGLE_CLIENT_SECRET`
 
-Four terminals, each owning one job — restarting/rebuilding one never touches the others:
+See `.env.example` for setup notes.
 
-| Terminal | Command | Purpose |
-|---|---|---|
-| 1 | `make up` | Steady-state infra (redis). Leave running. |
-| 2 | `make backend` | FastAPI, `--reload` on. Ctrl+C / rerun to restart, rebuilds on `requirements.txt` changes. |
-| 3 | `make frontend` | Next.js dev server. Ctrl+C / rerun to restart, rebuilds on `package.json` changes. |
-| 4 | `make test` | One-shot: pytest + ruff + eslint + Next build — same checks CI runs. |
+### 3. Build the project
 
-Other handy commands: `docker compose logs -f backend`, `docker compose exec backend bash`, `docker compose down` (stops everything).
+Only required for the first setup or after changing a Dockerfile.
 
-CI (`.github/workflows/ci.yml`) runs the same checks as `make test` on every push/PR to `main`.
+```Bash
+make build
+```
+
+### 4. Start the services
+
+Open three terminals:
+
+**Terminal 1**
+
+```Bash
+docker compose up
+```
+
+**Terminal 2 — Frontend**
+
+```Bash
+make frontend
+```
+
+Runs the Next.js development server with hot reload.
+
+**Terminal 3 — Backend**
+
+```Bash
+make backend
+```
+
+Runs FastAPI with `--reload`.
+
+If `package.json` or `requirements.txt` changes, stop and rerun the corresponding command to rebuild the service.
+
+### 5. Run tests
+
+Optional during development:
+
+```Bash
+make test
+```
+
+This runs the same checks used by CI:
+
+* pytest
+* ruff
+* eslint
+* Next.js build
+
+### 6. Verify
+
+* Frontend: [http://localhost:3000](http://localhost:3000)
+* Backend: [http://localhost:8000/health](http://localhost:8000/health)
+
+A successful backend health check returns:
+
+```JSON
+{"status": "ok"}
+```
+
+## Daily Development
+
+After the initial setup, you normally only need:
+
+```Bash
+docker compose up
+make frontend
+make backend
+```
+
+Run tests when needed:
+
+```Bash
+make test
+```
+
+No rebuild is required unless a Dockerfile changes.
+
+### Useful Commands
+
+```Bash
+docker compose logs -f backend
+docker compose exec backend bash
+docker compose down
+```
+

@@ -1,8 +1,13 @@
-.PHONY: up backend frontend test down logs
+.PHONY: build backend frontend test down logs
 
-# Terminal 1 — steady-state infra, keep running
-up:
-	docker compose up
+# First-time setup (or after a Dockerfile change) — builds backend + frontend images.
+# `make backend` / `make frontend` also auto-build on first run, this just does both up front.
+build:
+	docker compose --profile dev build
+
+# Terminal 1 (infra, leave running) is just `docker compose up` — backend/frontend are
+# gated behind the "dev" profile, so that alone only starts redis. No make target for
+# it since it wouldn't save you anything over typing the compose command directly.
 
 # Terminal 2 — backend, restart/rebuild independently here
 backend:
