@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from starlette.concurrency import run_in_threadpool
 
 from app.database import get_db
 from app.deps import get_current_user
@@ -95,11 +96,23 @@ async def generate_mock_data(
     if not category_ids:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ledger has no categories")
 
+    # Pure CPU-bound random-data generation — off the event loop so it doesn't
+    # stall every other request this worker is handling while it runs, same
+    # reasoning as receipts.py's run_in_threadpool use for its blocking calls.
+    rows = await run_in_threadpool(_build_mock_rows, ledger.id, current_user.id, category_ids, count)
+
+    await db.execute(insert(Transaction), rows)
+    await db.commit()
+
+    return GenerateMockDataResponse(created=count)
+
+
+def _build_mock_rows(ledger_id: int, user_id: int, category_ids: list[int], count: int) -> list[dict]:
     today = date.today()
-    rows = [
+    return [
         {
-            "ledger_id": ledger.id,
-            "created_by": current_user.id,
+            "ledger_id": ledger_id,
+            "created_by": user_id,
             "amount": Decimal(str(round(random.uniform(1, 500), 2))),
             "currency": "USD",
             "category_id": random.choice(category_ids),
@@ -109,8 +122,3 @@ async def generate_mock_data(
         }
         for _ in range(count)
     ]
-
-    await db.execute(insert(Transaction), rows)
-    await db.commit()
-
-    return GenerateMockDataResponse(created=count)

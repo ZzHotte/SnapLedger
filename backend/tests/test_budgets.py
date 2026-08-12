@@ -1,8 +1,12 @@
 from datetime import datetime, timezone
+from decimal import Decimal
+from unittest.mock import patch
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import LedgerMember, LedgerRole, MemberStatus, User
+from app.models import Budget, Category, LedgerMember, LedgerRole, MemberStatus, User
 
 
 async def _register(client, email) -> str:
@@ -136,3 +140,64 @@ async def test_budgets_404_for_ledger_caller_is_not_a_member_of(client):
         f"/budgets?ledger_id={ledger_id}&month=2026-08", headers={"Authorization": f"Bearer {outsider_token}"}
     )
     assert resp.status_code == 404
+
+
+async def test_set_budget_rejects_unknown_category(client):
+    token = await _register(client, "owner10@example.com")
+    resp = await client.put(
+        "/budgets",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"category": "Groceries", "month": "2026-08", "planned_amount": 300},
+    )
+    assert resp.status_code == 400
+
+    list_resp = await client.get("/budgets?month=2026-08", headers={"Authorization": f"Bearer {token}"})
+    assert list_resp.json() == []
+
+
+async def test_budget_upsert_recovers_from_integrity_error_via_update(client):
+    """Forces the exact race upsert_budget's IntegrityError handler exists for:
+    another request's row lands in between our SELECT (found nothing) and our
+    INSERT. Reproduced by making the endpoint's own first commit() inject a
+    real conflicting row via a side-channel session — simulating another
+    request's commit landing in that window — then fail the way a real unique
+    constraint violation would; the handler must recover by updating instead of
+    500ing. (True concurrent requests via asyncio.gather can't reliably
+    reproduce this against the test harness's single shared SQLite connection,
+    so the race is injected deterministically instead.)"""
+    token = await _register(client, "owner11@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    ledger_id = await _ledger_id(client, token)
+
+    original_commit = AsyncSession.commit
+    call_count = 0
+
+    async def commit_with_injected_race(self):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            async with client.session_maker() as other_db:
+                category = await other_db.scalar(
+                    select(Category).where(Category.ledger_id == ledger_id, Category.name == "Food")
+                )
+                other_db.add(
+                    Budget(
+                        ledger_id=ledger_id, category_id=category.id, month="2026-08", planned_amount=Decimal("100")
+                    )
+                )
+                await other_db.commit()
+            raise IntegrityError("insert", {}, Exception("unique violation"))
+        return await original_commit(self)
+
+    with patch.object(AsyncSession, "commit", commit_with_injected_race):
+        resp = await client.put(
+            "/budgets", headers=headers, json={"category": "Food", "month": "2026-08", "planned_amount": 250}
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["planned_amount"] == 250.0
+
+    list_resp = await client.get("/budgets?month=2026-08", headers=headers)
+    budgets = list_resp.json()
+    assert len(budgets) == 1
+    assert budgets[0]["planned_amount"] == 250.0

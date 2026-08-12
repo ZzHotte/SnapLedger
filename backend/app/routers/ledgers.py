@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.deps import get_current_user
 from app.ledgers import (
-    MAX_LEDGER_MEMBERS,
-    count_active_members,
+    ensure_capacity,
+    get_active_member,
     list_user_ledgers,
     require_owner,
     resolve_ledger_membership,
@@ -68,11 +68,10 @@ async def create_invite(
 ):
     _, role = await resolve_ledger_membership(db, current_user, ledger_id)
     require_owner(role)
-
-    if await count_active_members(db, ledger_id) >= MAX_LEDGER_MEMBERS:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=f"Ledger already has the maximum of {MAX_LEDGER_MEMBERS} members"
-        )
+    # Best-effort fail-fast check — not lock-protected, since generating an invite
+    # doesn't itself create a membership. The capacity limit is actually enforced
+    # atomically in accept_invite, where the membership row gets created.
+    await ensure_capacity(db, ledger_id)
 
     invite = LedgerInvite(
         ledger_id=ledger_id,
@@ -115,12 +114,14 @@ async def accept_invite(
     if existing is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Already a member of this ledger")
 
-    if await count_active_members(db, invite.ledger_id) >= MAX_LEDGER_MEMBERS:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=f"Ledger already has the maximum of {MAX_LEDGER_MEMBERS} members"
-        )
-
-    ledger = await db.get(Ledger, invite.ledger_id)
+    # Lock the ledger row so concurrent accepts for the same ledger serialize on
+    # this line: the count check below plus the membership insert are otherwise a
+    # check-then-act with no unique constraint backing the *count* (only
+    # uq_ledger_member, which just stops the same user joining twice) — without
+    # the lock, two different users accepting invites at the same moment could
+    # both pass the count check and push the ledger past MAX_LEDGER_MEMBERS.
+    ledger = await db.get(Ledger, invite.ledger_id, with_for_update=True)
+    await ensure_capacity(db, invite.ledger_id)
 
     db.add(
         LedgerMember(
@@ -159,13 +160,7 @@ async def update_member_role(
     if user_id == current_user.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Owner cannot change their own role")
 
-    member = await db.scalar(
-        select(LedgerMember).where(
-            LedgerMember.ledger_id == ledger_id,
-            LedgerMember.user_id == user_id,
-            LedgerMember.status == MemberStatus.active,
-        )
-    )
+    member = await get_active_member(db, ledger_id, user_id)
     if member is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
 
@@ -192,13 +187,7 @@ async def remove_member(
     else:
         require_owner(role)
 
-    member = await db.scalar(
-        select(LedgerMember).where(
-            LedgerMember.ledger_id == ledger_id,
-            LedgerMember.user_id == user_id,
-            LedgerMember.status == MemberStatus.active,
-        )
-    )
+    member = await get_active_member(db, ledger_id, user_id)
     if member is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
 

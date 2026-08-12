@@ -17,10 +17,17 @@ export default function TransactionsTable({ refreshKey }: { refreshKey: number }
 
   // Switching ledgers or adding a transaction invalidates whatever page we were
   // on — jump back to the first page rather than showing a now-meaningless offset.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+  // Adjusted during render (React's documented pattern for this — see
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes)
+  // rather than in a separate effect: a second effect would still fire the fetch
+  // effect below once with the stale `page` before the reset lands, wasting a
+  // request on every ledger switch/refresh that happens while page > 0.
+  const resetKey = `${currentLedger?.id ?? "none"}:${refreshKey}`;
+  const [prevResetKey, setPrevResetKey] = useState(resetKey);
+  if (resetKey !== prevResetKey) {
+    setPrevResetKey(resetKey);
     setPage(0);
-  }, [currentLedger?.id, refreshKey]);
+  }
 
   useEffect(() => {
     if (!currentLedger) return;

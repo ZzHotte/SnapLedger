@@ -20,7 +20,13 @@ async def resolve_ledger_membership(
         LedgerMember.user_id == user.id, LedgerMember.status == MemberStatus.active
     )
     if ledger_id is None:
-        query = query.where(LedgerMember.role == LedgerRole.owner)
+        # Every user currently has exactly one owner-role membership (created at
+        # registration; no code path grants a second one — invite/role-update
+        # roles are restricted to editor/viewer). This ordering is a defensive
+        # tiebreaker, not a real disambiguation: if a future feature ever lets a
+        # user own more than one ledger, callers that omit ledger_id here need to
+        # be revisited rather than silently landing on an arbitrary one.
+        query = query.where(LedgerMember.role == LedgerRole.owner).order_by(LedgerMember.id)
     else:
         query = query.where(LedgerMember.ledger_id == ledger_id)
 
@@ -51,6 +57,24 @@ async def count_active_members(db: AsyncSession, ledger_id: int) -> int:
         select(func.count())
         .select_from(LedgerMember)
         .where(LedgerMember.ledger_id == ledger_id, LedgerMember.status == MemberStatus.active)
+    )
+
+
+async def ensure_capacity(db: AsyncSession, ledger_id: int) -> None:
+    if await count_active_members(db, ledger_id) >= MAX_LEDGER_MEMBERS:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Ledger already has the maximum of {MAX_LEDGER_MEMBERS} members",
+        )
+
+
+async def get_active_member(db: AsyncSession, ledger_id: int, user_id: int) -> LedgerMember | None:
+    return await db.scalar(
+        select(LedgerMember).where(
+            LedgerMember.ledger_id == ledger_id,
+            LedgerMember.user_id == user_id,
+            LedgerMember.status == MemberStatus.active,
+        )
     )
 
 

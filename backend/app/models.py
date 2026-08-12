@@ -2,7 +2,7 @@ import enum
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Enum, ForeignKey, Numeric, String, UniqueConstraint, func
+from sqlalchemy import JSON, Boolean, Date, DateTime, Enum, ForeignKey, Index, Numeric, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -121,6 +121,10 @@ class Receipt(Base):
 
 class Transaction(Base):
     __tablename__ = "transactions"
+    # Backs both the paginated list (WHERE ledger_id=? ORDER BY transaction_date)
+    # and the dashboard's WHERE ledger_id=? AND transaction_date BETWEEN ? AND ?
+    # — without it both do a full table scan once a ledger reaches mock-data scale.
+    __table_args__ = (Index("ix_transactions_ledger_date", "ledger_id", "transaction_date"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     ledger_id: Mapped[int] = mapped_column(ForeignKey("ledgers.id"), nullable=False)

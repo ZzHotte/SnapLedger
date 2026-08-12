@@ -2,7 +2,7 @@ from calendar import monthrange
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Budget, Category, Transaction
@@ -32,35 +32,54 @@ def month_bounds(month: str) -> tuple[date, date]:
 
 
 async def build_dashboard_summary(db: AsyncSession, ledger_id: int, month: str) -> DashboardSummary:
-    """Aggregates in Python rather than with DB-specific date-grouping functions
-    (to_char/date_trunc), since tests run against SQLite while production is
-    Postgres — this keeps the query portable at the cost of pulling the window's
-    raw rows into memory, which is fine at personal-ledger transaction volumes."""
+    """Aggregates via SQL GROUP BY using SQLAlchemy's portable extract()/coalesce()
+    (which compile to the right dialect-specific SQL on both SQLite in tests and
+    Postgres in prod) instead of pulling every raw transaction row into Python —
+    keeps the dashboard cheap to render even for ledgers with tens of thousands of
+    rows (e.g. via the mock-data generator), where the old row-dump approach would
+    load and iterate most of them in-process on every request."""
     months = last_n_months(month)
     range_start, _ = month_bounds(months[0])
-    _, range_end = month_bounds(month)
+    month_start, month_end = month_bounds(month)
 
-    rows = (
+    # Portable "YYYY-MM" bucket as an integer (year*100 + month).
+    bucket_expr = (extract("year", Transaction.transaction_date) * 100 + extract("month", Transaction.transaction_date)).label(
+        "bucket"
+    )
+    trend_rows = (
         await db.execute(
-            select(Transaction.amount, Transaction.transaction_date, Category.name)
-            .outerjoin(Category, Category.id == Transaction.category_id)
+            select(bucket_expr, func.sum(Transaction.amount))
             .where(
                 Transaction.ledger_id == ledger_id,
                 Transaction.transaction_date >= range_start,
-                Transaction.transaction_date <= range_end,
+                Transaction.transaction_date <= month_end,
             )
+            .group_by(bucket_expr)
         )
     ).all()
 
     monthly_totals: dict[str, Decimal] = {m: Decimal("0") for m in months}
-    category_totals: dict[str, Decimal] = {}
-    for amount, tx_date, category_name in rows:
-        key = f"{tx_date.year:04d}-{tx_date.month:02d}"
+    for bucket, total in trend_rows:
+        bucket = int(bucket)
+        key = f"{bucket // 100:04d}-{bucket % 100:02d}"
         if key in monthly_totals:
-            monthly_totals[key] += amount
-        if key == month:
-            name = category_name or "Other"
-            category_totals[name] = category_totals.get(name, Decimal("0")) + amount
+            monthly_totals[key] = total
+
+    category_name_expr = func.coalesce(Category.name, "Other")
+    category_rows = (
+        await db.execute(
+            select(category_name_expr, func.sum(Transaction.amount))
+            .select_from(Transaction)
+            .outerjoin(Category, Category.id == Transaction.category_id)
+            .where(
+                Transaction.ledger_id == ledger_id,
+                Transaction.transaction_date >= month_start,
+                Transaction.transaction_date <= month_end,
+            )
+            .group_by(category_name_expr)
+        )
+    ).all()
+    category_totals: dict[str, Decimal] = dict(category_rows)
 
     budget_rows = (
         await db.execute(
