@@ -95,3 +95,43 @@ class TransactionOut(BaseModel):
     category: str | None
     receipt_image_url: str | None
     created_at: datetime
+
+
+MONTH_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
+
+
+class BudgetOut(BaseModel):
+    id: int
+    category: str
+    month: str
+    planned_amount: float
+
+
+class UpsertBudgetRequest(BaseModel):
+    category: str
+    month: str = Field(pattern=MONTH_PATTERN)
+    planned_amount: float = Field(gt=0)
+
+
+class CategorySpend(BaseModel):
+    category: str
+    amount: float
+
+
+class MonthlyTotal(BaseModel):
+    month: str
+    amount: float
+
+
+class BudgetProgress(BaseModel):
+    category: str
+    planned_amount: float
+    actual_amount: float
+
+
+class DashboardSummary(BaseModel):
+    month: str
+    total_spent: float
+    category_breakdown: list[CategorySpend]
+    monthly_trend: list[MonthlyTotal]
+    budgets: list[BudgetProgress]

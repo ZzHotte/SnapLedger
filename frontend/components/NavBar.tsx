@@ -36,6 +36,14 @@ export default function NavBar() {
         )}
         {currentLedger && (
           <Link
+            href="/dashboard"
+            className="text-sm text-gray-500 underline-offset-2 hover:text-black hover:underline"
+          >
+            Dashboard
+          </Link>
+        )}
+        {currentLedger && (
+          <Link
             href={`/ledgers/${currentLedger.id}/members`}
             className="text-sm text-gray-500 underline-offset-2 hover:text-black hover:underline"
           >

@@ -208,3 +208,49 @@ export function confirmReceipt(receiptId: number, payload: ConfirmReceiptPayload
 export function fetchTransactions(ledgerId: number) {
   return request<Transaction[]>(`/transactions?ledger_id=${ledgerId}`);
 }
+
+export interface CategorySpend {
+  category: string;
+  amount: number;
+}
+
+export interface MonthlyTotal {
+  month: string;
+  amount: number;
+}
+
+export interface BudgetProgress {
+  category: string;
+  planned_amount: number;
+  actual_amount: number;
+}
+
+export interface DashboardSummary {
+  month: string;
+  total_spent: number;
+  category_breakdown: CategorySpend[];
+  monthly_trend: MonthlyTotal[];
+  budgets: BudgetProgress[];
+}
+
+export function fetchDashboardSummary(ledgerId: number, month: string) {
+  return request<DashboardSummary>(`/dashboard/summary?ledger_id=${ledgerId}&month=${month}`);
+}
+
+export interface Budget {
+  id: number;
+  category: string;
+  month: string;
+  planned_amount: number;
+}
+
+export function fetchBudgets(ledgerId: number, month: string) {
+  return request<Budget[]>(`/budgets?ledger_id=${ledgerId}&month=${month}`);
+}
+
+export function upsertBudget(ledgerId: number, category: string, month: string, plannedAmount: number) {
+  return request<Budget>(`/budgets?ledger_id=${ledgerId}`, {
+    method: "PUT",
+    body: JSON.stringify({ category, month, planned_amount: plannedAmount }),
+  });
+}

@@ -139,3 +139,17 @@ class Transaction(Base):
 
     category: Mapped["Category | None"] = relationship()
     receipt: Mapped["Receipt | None"] = relationship()
+
+
+class Budget(Base):
+    __tablename__ = "budgets"
+    __table_args__ = (UniqueConstraint("ledger_id", "category_id", "month", name="uq_budget_ledger_category_month"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ledger_id: Mapped[int] = mapped_column(ForeignKey("ledgers.id"), nullable=False)
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
+    month: Mapped[str] = mapped_column(String(7), nullable=False)  # "YYYY-MM"
+    planned_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    category: Mapped["Category"] = relationship()
