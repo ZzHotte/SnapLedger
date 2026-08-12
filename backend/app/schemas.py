@@ -97,6 +97,15 @@ class TransactionOut(BaseModel):
     created_at: datetime
 
 
+class TransactionListOut(BaseModel):
+    items: list[TransactionOut]
+    total: int
+
+
+class GenerateMockDataResponse(BaseModel):
+    created: int
+
+
 MONTH_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
 
 

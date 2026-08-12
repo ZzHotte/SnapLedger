@@ -96,7 +96,7 @@ async def test_viewer_can_list_transactions(client):
 
     resp = await client.get(f"/transactions?ledger_id={ledger_id}", headers={"Authorization": f"Bearer {viewer_token}"})
     assert resp.status_code == 200
-    assert resp.json() == []
+    assert resp.json() == {"items": [], "total": 0}
 
 
 async def test_viewer_cannot_confirm_receipt(client):
@@ -159,7 +159,7 @@ async def test_editor_can_upload_and_confirm_on_a_shared_ledger(client):
     assert confirm_resp.status_code == 201
 
     list_resp = await client.get(f"/transactions?ledger_id={ledger_id}", headers=editor_headers)
-    assert len(list_resp.json()) == 1
+    assert list_resp.json()["total"] == 1
 
 
 async def test_upload_404s_for_ledger_caller_is_not_a_member_of(client):

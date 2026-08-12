@@ -205,8 +205,19 @@ export function confirmReceipt(receiptId: number, payload: ConfirmReceiptPayload
   });
 }
 
-export function fetchTransactions(ledgerId: number) {
-  return request<Transaction[]>(`/transactions?ledger_id=${ledgerId}`);
+export interface TransactionListResult {
+  items: Transaction[];
+  total: number;
+}
+
+export function fetchTransactions(ledgerId: number, limit: number, offset: number) {
+  return request<TransactionListResult>(`/transactions?ledger_id=${ledgerId}&limit=${limit}&offset=${offset}`);
+}
+
+export function generateMockData(ledgerId: number, count: number) {
+  return request<{ created: number }>(`/transactions/mock-data?ledger_id=${ledgerId}&count=${count}`, {
+    method: "POST",
+  });
 }
 
 export interface CategorySpend {

@@ -104,9 +104,9 @@ async def test_confirm_receipt_creates_transaction_and_lists_it(client):
 
     list_resp = await client.get("/transactions", headers=headers)
     assert list_resp.status_code == 200
-    transactions = list_resp.json()
-    assert len(transactions) == 1
-    assert transactions[0]["id"] == tx["id"]
+    body = list_resp.json()
+    assert body["total"] == 1
+    assert body["items"][0]["id"] == tx["id"]
 
 
 async def _upload_receipt(client, headers) -> int:
