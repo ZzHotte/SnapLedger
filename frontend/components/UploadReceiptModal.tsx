@@ -3,10 +3,12 @@
 import { useState, type ChangeEvent } from "react";
 import Image from "next/image";
 import { ApiError, CATEGORIES, confirmReceipt, uploadReceipt, type Receipt } from "@/lib/api";
+import { useLedger } from "@/lib/ledger-context";
 
 type Step = "idle" | "uploading" | "review" | "saving";
 
 export default function UploadReceiptModal({ onSaved }: { onSaved: () => void }) {
+  const { currentLedger } = useLedger();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>("idle");
   const [receipt, setReceipt] = useState<Receipt | null>(null);
@@ -27,12 +29,12 @@ export default function UploadReceiptModal({ onSaved }: { onSaved: () => void })
 
   async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !currentLedger) return;
 
     setError(null);
     setStep("uploading");
     try {
-      const result = await uploadReceipt(file);
+      const result = await uploadReceipt(file, currentLedger.id);
       setReceipt(result);
       setMerchant(result.merchant ?? "");
       setTxDate(result.transaction_date ?? new Date().toISOString().slice(0, 10));
@@ -51,17 +53,21 @@ export default function UploadReceiptModal({ onSaved }: { onSaved: () => void })
   }
 
   async function handleConfirm() {
-    if (!receipt) return;
+    if (!receipt || !currentLedger) return;
     setError(null);
     setStep("saving");
     try {
-      await confirmReceipt(receipt.id, {
-        merchant: merchant || null,
-        transaction_date: txDate,
-        amount: parseFloat(amount),
-        currency: currency.toUpperCase(),
-        category,
-      });
+      await confirmReceipt(
+        receipt.id,
+        {
+          merchant: merchant || null,
+          transaction_date: txDate,
+          amount: parseFloat(amount),
+          currency: currency.toUpperCase(),
+          category,
+        },
+        currentLedger.id
+      );
       closeModal();
       onSaved();
     } catch (err) {

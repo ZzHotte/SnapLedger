@@ -100,6 +100,16 @@ export function googleLoginUrl() {
   return `${API_URL}/auth/google/login`;
 }
 
+export interface Ledger {
+  id: number;
+  name: string;
+  role: "owner" | "editor" | "viewer";
+}
+
+export function fetchLedgers() {
+  return request<Ledger[]>("/ledgers");
+}
+
 export const CATEGORIES = ["Food", "Transport", "Shopping", "Bills", "Entertainment", "Other"] as const;
 
 export interface Receipt {
@@ -133,19 +143,20 @@ export interface Transaction {
   created_at: string;
 }
 
-export function uploadReceipt(file: File) {
+export function uploadReceipt(file: File, ledgerId: number) {
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("ledger_id", String(ledgerId));
   return requestForm<Receipt>("/receipts/upload", formData);
 }
 
-export function confirmReceipt(receiptId: number, payload: ConfirmReceiptPayload) {
-  return request<Transaction>(`/receipts/${receiptId}/confirm`, {
+export function confirmReceipt(receiptId: number, payload: ConfirmReceiptPayload, ledgerId: number) {
+  return request<Transaction>(`/receipts/${receiptId}/confirm?ledger_id=${ledgerId}`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
-export function fetchTransactions() {
-  return request<Transaction[]>("/transactions");
+export function fetchTransactions(ledgerId: number) {
+  return request<Transaction[]>(`/transactions?ledger_id=${ledgerId}`);
 }

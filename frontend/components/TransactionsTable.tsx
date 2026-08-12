@@ -3,20 +3,24 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { ApiError, fetchTransactions, type Transaction } from "@/lib/api";
+import { useLedger } from "@/lib/ledger-context";
 
 export default function TransactionsTable({ refreshKey }: { refreshKey: number }) {
+  const { currentLedger } = useLedger();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!currentLedger) return;
+    const ledgerId = currentLedger.id;
     let cancelled = false;
 
     async function load() {
       setLoading(true);
       setError(null);
       try {
-        const data = await fetchTransactions();
+        const data = await fetchTransactions(ledgerId);
         if (!cancelled) setTransactions(data);
       } catch (err) {
         if (!cancelled) setError(err instanceof ApiError ? err.message : "Failed to load transactions");
@@ -29,7 +33,7 @@ export default function TransactionsTable({ refreshKey }: { refreshKey: number }
     return () => {
       cancelled = true;
     };
-  }, [refreshKey]);
+  }, [refreshKey, currentLedger]);
 
   if (loading) {
     return <p className="text-sm text-gray-500">Loading transactions…</p>;

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AuthProvider } from "@/lib/auth-context";
+import { LedgerProvider } from "@/lib/ledger-context";
 import NavBar from "@/components/NavBar";
 import "./globals.css";
 
@@ -15,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SnapLedger",
+  title: "SnapLedger - Simple Personal Budget Planning",
   description: "Snap a receipt, get it auto-logged. Personal expense tracking, shared with up to 5 people.",
 };
 
@@ -27,8 +28,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <AuthProvider>
-          <NavBar />
-          {children}
+          <LedgerProvider>
+            <NavBar />
+            {children}
+          </LedgerProvider>
         </AuthProvider>
       </body>
     </html>

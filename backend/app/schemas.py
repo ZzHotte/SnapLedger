@@ -30,6 +30,12 @@ class TokenResponse(BaseModel):
     user: UserOut
 
 
+class LedgerOut(BaseModel):
+    id: int
+    name: str
+    role: str
+
+
 class ReceiptOut(BaseModel):
     id: int
     image_url: str

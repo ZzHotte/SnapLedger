@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routers import auth, receipts, transactions
+from app.routers import auth, ledgers, receipts, transactions
 
 settings = get_settings()
 
@@ -17,6 +17,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(ledgers.router)
 app.include_router(receipts.router)
 app.include_router(transactions.router)
 

@@ -1,6 +1,6 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
@@ -9,7 +9,7 @@ from app.cloudinary_client import upload_receipt_image
 from app.database import get_db
 from app.deps import get_current_user
 from app.gemini import extract_receipt_fields
-from app.ledgers import get_owned_ledger, resolve_category
+from app.ledgers import require_editor, resolve_category, resolve_ledger_membership
 from app.models import Receipt, ReceiptStatus, Transaction, User
 from app.schemas import ConfirmReceiptRequest, ReceiptOut, TransactionOut
 
@@ -30,6 +30,7 @@ def _parse_date(value: str | None) -> date | None:
 @router.post("/upload", response_model=ReceiptOut, status_code=status.HTTP_201_CREATED)
 async def upload_receipt(
     file: UploadFile,
+    ledger_id: int | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -40,7 +41,8 @@ async def upload_receipt(
     if len(contents) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image too large (max 10MB)")
 
-    ledger = await get_owned_ledger(db, current_user)
+    ledger, role = await resolve_ledger_membership(db, current_user, ledger_id)
+    require_editor(role)
     # upload_receipt_image/extract_receipt_fields are blocking sync calls (Cloudinary SDK,
     # google-genai sync client) — run them off the event loop so one slow upload doesn't
     # stall every other request this worker is handling.
@@ -79,10 +81,12 @@ async def upload_receipt(
 async def confirm_receipt(
     receipt_id: int,
     payload: ConfirmReceiptRequest,
+    ledger_id: int | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    ledger = await get_owned_ledger(db, current_user)
+    ledger, role = await resolve_ledger_membership(db, current_user, ledger_id)
+    require_editor(role)
     receipt = await db.get(Receipt, receipt_id)
     if receipt is None or receipt.ledger_id != ledger.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Receipt not found")

@@ -3,9 +3,11 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
+import { useLedger } from "@/lib/ledger-context";
 
 export default function NavBar() {
   const { user, logout } = useAuth();
+  const { ledgers, currentLedger, selectLedger } = useLedger();
 
   if (!user) return null;
 
@@ -17,6 +19,21 @@ export default function NavBar() {
       </Link>
 
       <div className="flex items-center gap-4">
+        {currentLedger && (
+          <select
+            value={currentLedger.id}
+            onChange={(e) => selectLedger(Number(e.target.value))}
+            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+            aria-label="Switch ledger"
+          >
+            {ledgers.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+                {l.role !== "owner" ? ` (${l.role})` : ""}
+              </option>
+            ))}
+          </select>
+        )}
         <span className="text-sm text-gray-500">{user.name || user.email}</span>
         <button
           onClick={logout}

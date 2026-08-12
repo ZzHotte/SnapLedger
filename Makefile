@@ -25,6 +25,7 @@ test:
 	docker compose exec backend pytest -v
 	docker compose exec backend ruff check .
 	docker compose exec frontend npm run lint
+	docker compose exec frontend npm test
 	docker compose exec frontend npm run build
 
 down:

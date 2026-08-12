@@ -2,16 +2,49 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Category, Ledger, User
+from app.models import Category, Ledger, LedgerMember, LedgerRole, MemberStatus, User
 
 
-async def get_owned_ledger(db: AsyncSession, user: User) -> Ledger:
-    """The ledger every user gets auto-created on signup. Until ledger-switching UI
-    exists, this is the only ledger read/write endpoints operate against."""
-    ledger = await db.scalar(select(Ledger).where(Ledger.owner_id == user.id))
-    if ledger is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No ledger found for user")
-    return ledger
+async def resolve_ledger_membership(
+    db: AsyncSession, user: User, ledger_id: int | None
+) -> tuple[Ledger, LedgerRole]:
+    """Resolve which ledger a request operates against and the caller's role in it.
+
+    With no ledger_id (the default before ledger-switching UI sends one explicitly),
+    falls back to the user's own personal ledger. A ledger_id the user isn't an active
+    member of 404s rather than 403s, so membership can't be probed by ID.
+    """
+    query = select(LedgerMember).where(
+        LedgerMember.user_id == user.id, LedgerMember.status == MemberStatus.active
+    )
+    if ledger_id is None:
+        query = query.where(LedgerMember.role == LedgerRole.owner)
+    else:
+        query = query.where(LedgerMember.ledger_id == ledger_id)
+
+    member = await db.scalar(query)
+    if member is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ledger not found")
+
+    ledger = await db.get(Ledger, member.ledger_id)
+    return ledger, member.role
+
+
+def require_editor(role: LedgerRole) -> None:
+    if role == LedgerRole.viewer:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Viewers cannot make changes to this ledger"
+        )
+
+
+async def list_user_ledgers(db: AsyncSession, user: User) -> list[tuple[Ledger, LedgerRole]]:
+    result = await db.execute(
+        select(Ledger, LedgerMember.role)
+        .join(LedgerMember, LedgerMember.ledger_id == Ledger.id)
+        .where(LedgerMember.user_id == user.id, LedgerMember.status == MemberStatus.active)
+        .order_by(Ledger.created_at)
+    )
+    return [(ledger, role) for ledger, role in result.all()]
 
 
 async def resolve_category(db: AsyncSession, ledger_id: int, name: str | None) -> Category | None:

@@ -5,7 +5,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.ledgers import get_owned_ledger
+from app.ledgers import resolve_ledger_membership
 from app.models import Transaction, User
 from app.schemas import TransactionOut
 
@@ -14,10 +14,12 @@ router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 @router.get("", response_model=list[TransactionOut])
 async def list_transactions(
+    ledger_id: int | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    ledger = await get_owned_ledger(db, current_user)
+    # any active member (owner/editor/viewer) can read
+    ledger, _role = await resolve_ledger_membership(db, current_user, ledger_id)
     result = await db.scalars(
         select(Transaction)
         .where(Transaction.ledger_id == ledger.id)

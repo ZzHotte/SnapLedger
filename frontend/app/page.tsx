@@ -3,11 +3,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
+import { useLedger } from "@/lib/ledger-context";
 import UploadReceiptModal from "@/components/UploadReceiptModal";
 import TransactionsTable from "@/components/TransactionsTable";
 
 export default function Home() {
   const { user, loading } = useAuth();
+  const { currentLedger } = useLedger();
   const [refreshKey, setRefreshKey] = useState(0);
 
   if (loading) {
@@ -38,7 +40,9 @@ export default function Home() {
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Welcome, {user.name || user.email}</h1>
-        <UploadReceiptModal onSaved={() => setRefreshKey((k) => k + 1)} />
+        {currentLedger?.role !== "viewer" && (
+          <UploadReceiptModal onSaved={() => setRefreshKey((k) => k + 1)} />
+        )}
       </div>
 
       <TransactionsTable refreshKey={refreshKey} />

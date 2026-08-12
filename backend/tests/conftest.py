@@ -26,6 +26,9 @@ async def client():
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        # exposed so tests can seed rows (e.g. a second ledger member) that
+        # aren't reachable yet through the HTTP API (invite flow is Week 4)
+        ac.session_maker = test_session
         yield ac
 
     app.dependency_overrides.clear()
