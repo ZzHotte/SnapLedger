@@ -1,7 +1,8 @@
 import enum
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import JSON, Boolean, Date, DateTime, Enum, ForeignKey, Numeric, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -16,6 +17,12 @@ class LedgerRole(str, enum.Enum):
 class MemberStatus(str, enum.Enum):
     invited = "invited"
     active = "active"
+
+
+class ReceiptStatus(str, enum.Enum):
+    pending = "pending"
+    confirmed = "confirmed"
+    rejected = "rejected"
 
 
 class User(Base):
@@ -91,3 +98,44 @@ class Category(Base):
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
 
     ledger: Mapped["Ledger"] = relationship(back_populates="categories")
+
+
+class Receipt(Base):
+    __tablename__ = "receipts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ledger_id: Mapped[int] = mapped_column(ForeignKey("ledgers.id"), nullable=False)
+    uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    image_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    extracted_merchant: Mapped[str | None] = mapped_column(String(255))
+    extracted_date: Mapped[date | None] = mapped_column(Date)
+    extracted_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    extracted_currency: Mapped[str | None] = mapped_column(String(3))
+    extracted_category: Mapped[str | None] = mapped_column(String(100))
+    ocr_raw_json: Mapped[dict | None] = mapped_column(JSON)
+    status: Mapped[ReceiptStatus] = mapped_column(
+        Enum(ReceiptStatus, name="receipt_status"), default=ReceiptStatus.pending
+    )
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Transaction(Base):
+    __tablename__ = "transactions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ledger_id: Mapped[int] = mapped_column(ForeignKey("ledgers.id"), nullable=False)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"))
+    merchant: Mapped[str | None] = mapped_column(String(255))
+    transaction_date: Mapped[date] = mapped_column(Date, nullable=False)
+    note: Mapped[str | None] = mapped_column(String(500))
+    # unique: DB-level backstop against the confirm_receipt race (two concurrent
+    # confirms both passing the pending-status check before either commits) —
+    # one receipt can back at most one transaction.
+    receipt_id: Mapped[int | None] = mapped_column(ForeignKey("receipts.id"), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    category: Mapped["Category | None"] = relationship()
+    receipt: Mapped["Receipt | None"] = relationship()
