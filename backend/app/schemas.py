@@ -36,6 +36,36 @@ class LedgerOut(BaseModel):
     role: str
 
 
+class LedgerMemberOut(BaseModel):
+    user_id: int
+    email: str
+    name: str | None
+    role: str
+    joined_at: datetime | None
+
+
+class CreateInviteRequest(BaseModel):
+    role: str = Field(pattern="^(editor|viewer)$")
+    expires_in_days: int = Field(default=7, ge=1, le=30)
+
+
+class InviteOut(BaseModel):
+    id: int
+    invite_code: str
+    role: str
+    expires_at: datetime | None
+
+
+class AcceptInviteResponse(BaseModel):
+    ledger_id: int
+    ledger_name: str
+    role: str
+
+
+class UpdateMemberRoleRequest(BaseModel):
+    role: str = Field(pattern="^(editor|viewer)$")
+
+
 class ReceiptOut(BaseModel):
     id: int
     image_url: str

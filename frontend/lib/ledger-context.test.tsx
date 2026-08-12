@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LedgerProvider, useLedger } from "./ledger-context";
 import type { User } from "./api";
@@ -59,7 +59,7 @@ describe("LedgerProvider", () => {
 
     renderWithUser(FAKE_USER);
 
-    expect(await screen.findByTestId("current-id")).toHaveTextContent("1");
+    await waitFor(() => expect(screen.getByTestId("current-id")).toHaveTextContent("1"));
     expect(screen.getByTestId("ledger-count")).toHaveTextContent("2");
   });
 
@@ -72,7 +72,7 @@ describe("LedgerProvider", () => {
 
     renderWithUser(FAKE_USER);
 
-    expect(await screen.findByTestId("current-id")).toHaveTextContent("2");
+    await waitFor(() => expect(screen.getByTestId("current-id")).toHaveTextContent("2"));
   });
 
   it("falls back to the first ledger when the stored id no longer exists", async () => {
@@ -81,7 +81,7 @@ describe("LedgerProvider", () => {
 
     renderWithUser(FAKE_USER);
 
-    expect(await screen.findByTestId("current-id")).toHaveTextContent("5");
+    await waitFor(() => expect(screen.getByTestId("current-id")).toHaveTextContent("5"));
   });
 
   it("persists the choice to localStorage when the user switches ledgers", async () => {
@@ -90,11 +90,11 @@ describe("LedgerProvider", () => {
       { id: 2, name: "Roommates", role: "viewer" },
     ]);
     renderWithUser(FAKE_USER);
-    await screen.findByTestId("current-id");
+    await waitFor(() => expect(screen.getByTestId("ledger-count")).toHaveTextContent("2"));
 
     fireEvent.click(screen.getByText("select-2"));
 
-    expect(await screen.findByTestId("current-id")).toHaveTextContent("2");
+    expect(screen.getByTestId("current-id")).toHaveTextContent("2");
     expect(localStorage.getItem("ledgerId")).toBe("2");
   });
 

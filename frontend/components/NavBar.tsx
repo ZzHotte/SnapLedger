@@ -34,6 +34,14 @@ export default function NavBar() {
             ))}
           </select>
         )}
+        {currentLedger && (
+          <Link
+            href={`/ledgers/${currentLedger.id}/members`}
+            className="text-sm text-gray-500 underline-offset-2 hover:text-black hover:underline"
+          >
+            Members
+          </Link>
+        )}
         <span className="text-sm text-gray-500">{user.name || user.email}</span>
         <button
           onClick={logout}

@@ -42,6 +42,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     throw new ApiError(res.status, extractErrorMessage(body.detail));
   }
 
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 
@@ -108,6 +109,53 @@ export interface Ledger {
 
 export function fetchLedgers() {
   return request<Ledger[]>("/ledgers");
+}
+
+export interface LedgerMember {
+  user_id: number;
+  email: string;
+  name: string | null;
+  role: "owner" | "editor" | "viewer";
+  joined_at: string | null;
+}
+
+export function fetchLedgerMembers(ledgerId: number) {
+  return request<LedgerMember[]>(`/ledgers/${ledgerId}/members`);
+}
+
+export function updateMemberRole(ledgerId: number, userId: number, role: "editor" | "viewer") {
+  return request<LedgerMember>(`/ledgers/${ledgerId}/members/${userId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ role }),
+  });
+}
+
+export function removeMember(ledgerId: number, userId: number) {
+  return request<void>(`/ledgers/${ledgerId}/members/${userId}`, { method: "DELETE" });
+}
+
+export interface Invite {
+  id: number;
+  invite_code: string;
+  role: "editor" | "viewer";
+  expires_at: string | null;
+}
+
+export function createInvite(ledgerId: number, role: "editor" | "viewer") {
+  return request<Invite>(`/ledgers/${ledgerId}/invites`, {
+    method: "POST",
+    body: JSON.stringify({ role }),
+  });
+}
+
+export interface AcceptInviteResult {
+  ledger_id: number;
+  ledger_name: string;
+  role: "owner" | "editor" | "viewer";
+}
+
+export function acceptInvite(code: string) {
+  return request<AcceptInviteResult>(`/ledgers/invites/${code}/accept`, { method: "POST" });
 }
 
 export const CATEGORIES = ["Food", "Transport", "Shopping", "Bills", "Entertainment", "Other"] as const;

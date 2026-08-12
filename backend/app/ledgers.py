@@ -1,8 +1,10 @@
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Category, Ledger, LedgerMember, LedgerRole, MemberStatus, User
+
+MAX_LEDGER_MEMBERS = 5
 
 
 async def resolve_ledger_membership(
@@ -35,6 +37,21 @@ def require_editor(role: LedgerRole) -> None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Viewers cannot make changes to this ledger"
         )
+
+
+def require_owner(role: LedgerRole) -> None:
+    if role != LedgerRole.owner:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Only the ledger owner can do this"
+        )
+
+
+async def count_active_members(db: AsyncSession, ledger_id: int) -> int:
+    return await db.scalar(
+        select(func.count())
+        .select_from(LedgerMember)
+        .where(LedgerMember.ledger_id == ledger_id, LedgerMember.status == MemberStatus.active)
+    )
 
 
 async def list_user_ledgers(db: AsyncSession, user: User) -> list[tuple[Ledger, LedgerRole]]:
