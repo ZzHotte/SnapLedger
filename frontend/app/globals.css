@@ -24,3 +24,14 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Native <button>/<select> don't get a pointer cursor by default (only <a> does) —
+   set it globally instead of adding cursor-pointer to every button across the app. */
+button:not(:disabled),
+select {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}

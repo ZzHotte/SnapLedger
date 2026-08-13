@@ -97,13 +97,36 @@ export default function UploadReceiptModal({ onSaved }: { onSaved: () => void })
 
             {step === "idle" && (
               <div>
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={handleFileChange}
-                  className="block w-full text-sm"
-                />
+                <label
+                  htmlFor="receipt-file-input"
+                  className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-6 py-10 text-center transition-colors hover:border-gray-400 hover:bg-gray-50"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                    className="h-10 w-10 text-gray-400"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 8.25 12 3.75m0 0L7.5 8.25M12 3.75v12"
+                    />
+                  </svg>
+                  <span className="text-sm font-medium text-gray-700">Click to upload a receipt</span>
+                  <span className="text-xs text-gray-400">or take a photo · PNG, JPG</span>
+                  <input
+                    id="receipt-file-input"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleFileChange}
+                    className="sr-only"
+                  />
+                </label>
                 {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
               </div>
             )}

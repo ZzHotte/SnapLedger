@@ -72,4 +72,33 @@ describe("TransactionsTable", () => {
     expect(fetchTransactionsMock).toHaveBeenCalledTimes(1);
     expect(fetchTransactionsMock).toHaveBeenCalledWith(1, 50, 0);
   });
+
+  it("keeps the previous page's data on screen (not a blank loading state) while fetching the next page", async () => {
+    let resolveNextPage!: (value: TransactionListResult) => void;
+    const nextPagePromise = new Promise<TransactionListResult>((resolve) => {
+      resolveNextPage = resolve;
+    });
+    fetchTransactionsMock
+      .mockImplementationOnce(async () => pageOf(120, 0, 50))
+      .mockImplementationOnce(() => nextPagePromise);
+
+    render(<TransactionsTable refreshKey={0} />);
+    await waitFor(() => expect(screen.getByText("Page 1 of 3")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText("Next"));
+
+    // The page label updates immediately (it's local UI state), but the fetch
+    // for page 2's rows is still pending — the table should still show page 1's
+    // stale rows (dimmed) rather than the full-page "Loading transactions…" text
+    // (which would unmount the table and cause a layout jump).
+    await waitFor(() => expect(screen.getByText("Page 2 of 3")).toBeInTheDocument());
+    expect(screen.getByText("Merchant 1")).toBeInTheDocument();
+    expect(screen.queryByText("Loading transactions…")).not.toBeInTheDocument();
+    expect(screen.getByText("Next")).toBeDisabled();
+    expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument();
+
+    resolveNextPage(pageOf(120, 50, 50));
+    await waitFor(() => expect(screen.getByText("Merchant 51")).toBeInTheDocument());
+    expect(screen.queryByRole("status", { name: "Loading" })).not.toBeInTheDocument();
+  });
 });
