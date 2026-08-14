@@ -265,3 +265,39 @@ export function upsertBudget(ledgerId: number, category: string, month: string, 
     body: JSON.stringify({ category, month, planned_amount: plannedAmount }),
   });
 }
+
+export interface ExchangeRate {
+  base: string;
+  target: string;
+  rate: number;
+  fetched_at: string;
+}
+
+export function fetchExchangeRate(base: string, target: string) {
+  return request<ExchangeRate>(`/market-data/exchange-rate?base=${base}&target=${target}`);
+}
+
+export interface BankRate {
+  country: string;
+  bank_name: string;
+  product_type: "demand" | "term";
+  term_months: number | null;
+  rate: number;
+}
+
+export function fetchBankRates(country: string) {
+  return request<BankRate[]>(`/market-data/bank-rates?country=${country}`);
+}
+
+export interface MacroIndicator {
+  country: string;
+  indicator: string;
+  value: number;
+  year: number | null;
+  source: string;
+  fetched_at: string;
+}
+
+export function fetchMacroIndicator(country: string, indicator: string) {
+  return request<MacroIndicator>(`/market-data/macro?country=${country}&indicator=${indicator}`);
+}

@@ -2,7 +2,20 @@ import enum
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Enum, ForeignKey, Index, Numeric, String, UniqueConstraint, func
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Date,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -157,3 +170,43 @@ class Budget(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     category: Mapped["Category"] = relationship()
+
+
+class ExchangeRate(Base):
+    __tablename__ = "exchange_rates"
+    __table_args__ = (UniqueConstraint("base_currency", "target_currency", name="uq_exchange_rate_pair"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    base_currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    target_currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    rate: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class BankRate(Base):
+    __tablename__ = "bank_rates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    country_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    bank_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    product_type: Mapped[str] = mapped_column(String(20), nullable=False)  # "demand" | "term"
+    term_months: Mapped[int | None] = mapped_column(Integer)
+    rate: Mapped[Decimal] = mapped_column(Numeric(6, 3), nullable=False)
+    source_url: Mapped[str | None] = mapped_column(String(500))
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MacroIndicator(Base):
+    __tablename__ = "macro_indicators"
+    # One row per (country, indicator) holding the latest known value rather than
+    # a full year-over-year history — this panel is a "current reference" card,
+    # not a trend chart, so there's nothing to gain from keeping old rows around.
+    __table_args__ = (UniqueConstraint("country_code", "indicator", name="uq_macro_indicator_country"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    country_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    indicator: Mapped[str] = mapped_column(String(50), nullable=False)
+    value: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    year: Mapped[int | None] = mapped_column(Integer)
+    source: Mapped[str] = mapped_column(String(50), nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

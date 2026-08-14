@@ -144,3 +144,27 @@ class DashboardSummary(BaseModel):
     category_breakdown: list[CategorySpend]
     monthly_trend: list[MonthlyTotal]
     budgets: list[BudgetProgress]
+
+
+class ExchangeRateOut(BaseModel):
+    base: str
+    target: str
+    rate: float
+    fetched_at: datetime
+
+
+class BankRateOut(BaseModel):
+    country: str
+    bank_name: str
+    product_type: str
+    term_months: int | None
+    rate: float
+
+
+class MacroIndicatorOut(BaseModel):
+    country: str
+    indicator: str
+    value: float
+    year: int | None
+    source: str
+    fetched_at: datetime
