@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import SUPPORTED_MACRO_INDICATORS
 from app.database import get_db
 from app.deps import get_current_user
 from app.market_data import MarketDataUnavailable, get_exchange_rate, get_gdp_per_capita, list_bank_rates
@@ -11,14 +12,6 @@ router = APIRouter(prefix="/market-data", tags=["market-data"])
 
 CURRENCY_PATTERN = r"^[A-Za-z]{3}$"
 COUNTRY_PATTERN = r"^[A-Za-z]{3}$"
-
-# Only gdp_per_capita is live-backed for now — the architecture doc assumed World
-# Bank also covers "average wage" comparably across countries, but there's no
-# free, comparable cross-country wage indicator in its catalog (checked: the only
-# wage-related series are public/private sector premiums and quintile shares, not
-# a plain average). Rather than fabricate placeholder wage figures, that indicator
-# is left unsupported until a real source is picked.
-SUPPORTED_INDICATORS = {"gdp_per_capita"}
 
 
 @router.get("/exchange-rate", response_model=ExchangeRateOut)
@@ -63,7 +56,7 @@ async def macro_indicator(
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ):
-    if indicator not in SUPPORTED_INDICATORS:
+    if indicator not in SUPPORTED_MACRO_INDICATORS:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported indicator: {indicator}")
     try:
         row = await get_gdp_per_capita(db, country)

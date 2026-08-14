@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.constants import CATEGORIES
 from app.database import get_db
 from app.deps import get_current_user
 from app.google_oauth import build_google_auth_url, exchange_code_for_userinfo
@@ -16,8 +17,6 @@ from app.security import create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 settings = get_settings()
-
-DEFAULT_CATEGORIES = ["Food", "Transport", "Shopping", "Bills", "Entertainment", "Other"]
 
 
 async def create_personal_ledger(db: AsyncSession, user: User) -> Ledger:
@@ -34,7 +33,7 @@ async def create_personal_ledger(db: AsyncSession, user: User) -> Ledger:
             joined_at=datetime.now(timezone.utc),
         )
     )
-    for name in DEFAULT_CATEGORIES:
+    for name in CATEGORIES:
         db.add(Category(ledger_id=ledger.id, name=name, is_default=True))
 
     return ledger

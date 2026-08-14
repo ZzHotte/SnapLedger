@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useLedger } from "@/lib/ledger-context";
-import { ApiError, CATEGORIES, fetchDashboardSummary, upsertBudget, type DashboardSummary } from "@/lib/api";
+import { ApiError, fetchDashboardSummary, upsertBudget, type DashboardSummary } from "@/lib/api";
+import { CATEGORIES } from "@/lib/constants";
 
 function currentMonth(): string {
   const now = new Date();

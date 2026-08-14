@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from starlette.concurrency import run_in_threadpool
 
+from app.constants import DEFAULT_MOCK_COUNT, MAX_MOCK_COUNT, MOCK_MERCHANTS
 from app.database import get_db
 from app.deps import get_current_user
 from app.ledgers import require_owner, resolve_ledger_membership
@@ -15,25 +16,6 @@ from app.models import Category, Transaction, User
 from app.schemas import GenerateMockDataResponse, TransactionListOut, TransactionOut
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
-
-MAX_MOCK_COUNT = 20_000
-MOCK_MERCHANTS = [
-    "Trader Joe's",
-    "Shell Gas Station",
-    "Amazon",
-    "Target",
-    "Starbucks",
-    "Uber",
-    "Netflix",
-    "Whole Foods",
-    "Costco",
-    "Corner Cafe",
-    "AMC Theatres",
-    "Home Depot",
-    "IKEA",
-    "CVS Pharmacy",
-    "Chipotle",
-]
 
 
 @router.get("", response_model=TransactionListOut)
@@ -82,7 +64,7 @@ async def list_transactions(
 @router.post("/mock-data", response_model=GenerateMockDataResponse, status_code=status.HTTP_201_CREATED)
 async def generate_mock_data(
     ledger_id: int | None = None,
-    count: int = Query(default=10_000, ge=1, le=MAX_MOCK_COUNT),
+    count: int = Query(default=DEFAULT_MOCK_COUNT, ge=1, le=MAX_MOCK_COUNT),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

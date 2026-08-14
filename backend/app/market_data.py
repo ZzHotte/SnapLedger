@@ -6,15 +6,10 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import EXCHANGE_RATE_TTL, FRANKFURTER_URL, GDP_TTL, WORLD_BANK_GDP_URL
 from app.models import BankRate, ExchangeRate, MacroIndicator
 
 logger = logging.getLogger(__name__)
-
-EXCHANGE_RATE_TTL = timedelta(hours=12)
-GDP_TTL = timedelta(days=30)
-
-FRANKFURTER_URL = "https://api.frankfurter.dev/v1/latest"
-WORLD_BANK_GDP_URL = "https://api.worldbank.org/v2/country/{country}/indicator/NY.GDP.PCAP.CD"
 
 
 class MarketDataUnavailable(Exception):

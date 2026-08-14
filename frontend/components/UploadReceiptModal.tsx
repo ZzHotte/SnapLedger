@@ -2,7 +2,8 @@
 
 import { useState, type ChangeEvent } from "react";
 import Image from "next/image";
-import { ApiError, CATEGORIES, confirmReceipt, uploadReceipt, type Receipt } from "@/lib/api";
+import { ApiError, confirmReceipt, uploadReceipt, type Receipt } from "@/lib/api";
+import { CATEGORIES } from "@/lib/constants";
 import { useLedger } from "@/lib/ledger-context";
 
 type Step = "idle" | "uploading" | "review" | "saving";

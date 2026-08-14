@@ -158,8 +158,6 @@ export function acceptInvite(code: string) {
   return request<AcceptInviteResult>(`/ledgers/invites/${code}/accept`, { method: "POST" });
 }
 
-export const CATEGORIES = ["Food", "Transport", "Shopping", "Bills", "Entertainment", "Other"] as const;
-
 export interface Receipt {
   id: number;
   image_url: string;

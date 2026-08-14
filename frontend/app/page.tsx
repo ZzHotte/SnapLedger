@@ -5,10 +5,9 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { useLedger } from "@/lib/ledger-context";
 import { ApiError, generateMockData } from "@/lib/api";
+import { MOCK_DATA_COUNT } from "@/lib/constants";
 import UploadReceiptModal from "@/components/UploadReceiptModal";
 import TransactionsTable from "@/components/TransactionsTable";
-
-const MOCK_DATA_COUNT = 10_000;
 
 export default function Home() {
   const { user, loading } = useAuth();

@@ -5,6 +5,7 @@ from google import genai
 from google.genai import types
 
 from app.config import get_settings
+from app.constants import CATEGORIES
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -17,9 +18,6 @@ def _get_client() -> genai.Client:
     if _client is None:
         _client = genai.Client(api_key=settings.gemini_api_key)
     return _client
-
-
-CATEGORIES = ["Food", "Transport", "Shopping", "Bills", "Entertainment", "Other"]
 
 EXTRACTION_PROMPT = f"""You are extracting structured data from a photo of a receipt.
 Return ONLY JSON (no markdown, no explanation) matching exactly this shape:

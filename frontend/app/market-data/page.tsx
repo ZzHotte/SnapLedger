@@ -11,16 +11,7 @@ import {
   type ExchangeRate,
   type MacroIndicator,
 } from "@/lib/api";
-
-const CURRENCIES = ["CNY", "AUD", "USD", "EUR", "GBP", "JPY", "HKD", "CAD", "NZD", "SGD"];
-
-const COUNTRIES = [
-  { code: "CHN", label: "China" },
-  { code: "AUS", label: "Australia" },
-  { code: "USA", label: "United States" },
-  { code: "GBR", label: "United Kingdom" },
-  { code: "JPN", label: "Japan" },
-];
+import { CURRENCIES, MARKET_DATA_COUNTRIES as COUNTRIES } from "@/lib/constants";
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleString();
