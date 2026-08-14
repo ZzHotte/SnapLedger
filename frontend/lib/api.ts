@@ -281,6 +281,7 @@ export interface BankRate {
   product_type: "demand" | "term";
   term_months: number | null;
   rate: number;
+  source_url: string | null;
 }
 
 export function fetchBankRates(country: string) {

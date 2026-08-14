@@ -29,9 +29,11 @@ WORLD_BANK_GDP_URL = "https://api.worldbank.org/v2/country/{country}/indicator/N
 EXCHANGE_RATE_TTL = timedelta(hours=12)
 GDP_TTL = timedelta(days=30)
 
-# Indicators /market-data/macro currently has a real data source for — see
-# app/routers/market_data.py for why "avg_wage" isn't here yet.
-SUPPORTED_MACRO_INDICATORS = {"gdp_per_capita"}
+# Which indicators /market-data/macro supports lives in app/market_data.py
+# (SUPPORTED_MACRO_INDICATORS, derived from MACRO_INDICATOR_FETCHERS) rather
+# than here — it has to stay coupled to the actual fetcher functions, not be
+# a free-floating list a new entry could be added to without also wiring up
+# real data for it.
 
 # --- Mock data generator (app/routers/transactions.py) ---
 MAX_MOCK_COUNT = 20_000

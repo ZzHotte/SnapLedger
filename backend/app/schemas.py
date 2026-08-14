@@ -159,6 +159,7 @@ class BankRateOut(BaseModel):
     product_type: str
     term_months: int | None
     rate: float
+    source_url: str | None
 
 
 class MacroIndicatorOut(BaseModel):

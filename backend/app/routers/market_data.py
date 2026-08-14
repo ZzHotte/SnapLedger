@@ -1,10 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.constants import SUPPORTED_MACRO_INDICATORS
 from app.database import get_db
 from app.deps import get_current_user
-from app.market_data import MarketDataUnavailable, get_exchange_rate, get_gdp_per_capita, list_bank_rates
+from app.market_data import MACRO_INDICATOR_FETCHERS, SUPPORTED_MACRO_INDICATORS, MarketDataUnavailable, get_exchange_rate, list_bank_rates
 from app.models import User
 from app.schemas import BankRateOut, ExchangeRateOut, MacroIndicatorOut
 
@@ -44,6 +43,7 @@ async def bank_rates(
             product_type=r.product_type,
             term_months=r.term_months,
             rate=float(r.rate),
+            source_url=r.source_url,
         )
         for r in rows
     ]
@@ -59,7 +59,7 @@ async def macro_indicator(
     if indicator not in SUPPORTED_MACRO_INDICATORS:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported indicator: {indicator}")
     try:
-        row = await get_gdp_per_capita(db, country)
+        row = await MACRO_INDICATOR_FETCHERS[indicator](db, country)
     except MarketDataUnavailable as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
     return MacroIndicatorOut(

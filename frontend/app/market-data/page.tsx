@@ -17,12 +17,12 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleString();
 }
 
-function CurrencyConverter() {
-  const [amount, setAmount] = useState("100");
-  const [base, setBase] = useState("CNY");
-  const [target, setTarget] = useState("AUD");
-  const [rate, setRate] = useState<ExchangeRate | null>(null);
-  const [loading, setLoading] = useState(false);
+// Shared by the three sections below: each fetches independently on its own
+// params changing, races itself against unmount/param-change via `cancelled`,
+// and exposes the same {data, loading, error} shape.
+function useMarketData<T>(fetchFn: () => Promise<T>, deps: unknown[], errorMessage: string) {
+  const [data, setData] = useState<T | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -31,10 +31,10 @@ function CurrencyConverter() {
       setLoading(true);
       setError(null);
       try {
-        const data = await fetchExchangeRate(base, target);
-        if (!cancelled) setRate(data);
+        const result = await fetchFn();
+        if (!cancelled) setData(result);
       } catch (err) {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : "Failed to load exchange rate");
+        if (!cancelled) setError(err instanceof ApiError ? err.message : errorMessage);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -43,7 +43,23 @@ function CurrencyConverter() {
     return () => {
       cancelled = true;
     };
-  }, [base, target]);
+    // fetchFn is recreated every render (it closes over the latest params) —
+    // deps carries the params that should actually trigger a refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+
+  return { data, loading, error };
+}
+
+function CurrencyConverter() {
+  const [amount, setAmount] = useState("100");
+  const [base, setBase] = useState("CNY");
+  const [target, setTarget] = useState("AUD");
+  const { data: rate, loading, error } = useMarketData<ExchangeRate>(
+    () => fetchExchangeRate(base, target),
+    [base, target],
+    "Failed to load exchange rate"
+  );
 
   const amountNum = parseFloat(amount);
   const converted = rate && !Number.isNaN(amountNum) ? amountNum * rate.rate : null;
@@ -112,29 +128,11 @@ function CurrencyConverter() {
 
 function BankRatesTable() {
   const [country, setCountry] = useState("CHN");
-  const [rates, setRates] = useState<BankRate[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await fetchBankRates(country);
-        if (!cancelled) setRates(data);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : "Failed to load bank rates");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [country]);
+  const {
+    data: rates,
+    loading,
+    error,
+  } = useMarketData<BankRate[]>(() => fetchBankRates(country), [country], "Failed to load bank rates");
 
   return (
     <section>
@@ -155,13 +153,21 @@ function BankRatesTable() {
 
       {error && <p className="text-sm text-red-600">{error}</p>}
       {loading && <p className="text-sm text-gray-500">Loading…</p>}
-      {!loading && !error && rates.length === 0 && <p className="text-sm text-gray-500">No data for this country yet.</p>}
-      {!loading && !error && rates.length > 0 && (
+      {!loading && !error && rates?.length === 0 && <p className="text-sm text-gray-500">No data for this country yet.</p>}
+      {!loading && !error && rates && rates.length > 0 && (
         <div className="space-y-2">
           {rates.map((r, i) => (
             <div key={i} className="flex items-center justify-between text-sm">
               <span className="text-gray-700">
                 {r.bank_name} · {r.product_type === "demand" ? "Demand deposit" : `${r.term_months}-month term`}
+                {r.source_url && (
+                  <>
+                    {" · "}
+                    <a href={r.source_url} target="_blank" rel="noreferrer" className="underline hover:text-black">
+                      source
+                    </a>
+                  </>
+                )}
               </span>
               <span className="font-medium">{r.rate}%</span>
             </div>
@@ -177,29 +183,15 @@ function BankRatesTable() {
 
 function MacroIndicators() {
   const [country, setCountry] = useState("CHN");
-  const [gdp, setGdp] = useState<MacroIndicator | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await fetchMacroIndicator(country, "gdp_per_capita");
-        if (!cancelled) setGdp(data);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : "Failed to load GDP data");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [country]);
+  const {
+    data: gdp,
+    loading,
+    error,
+  } = useMarketData<MacroIndicator>(
+    () => fetchMacroIndicator(country, "gdp_per_capita"),
+    [country],
+    "Failed to load GDP data"
+  );
 
   return (
     <section>
