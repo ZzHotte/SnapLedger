@@ -18,6 +18,19 @@ async def test_register_login_me_flow(client):
     assert login_resp.status_code == 200
 
 
+async def test_register_creates_personal_workspace_named_my_freight_team(client):
+    resp = await client.post(
+        "/auth/register", json={"email": "freightteam@example.com", "password": "testpassword123"}
+    )
+    token = resp.json()["access_token"]
+
+    workspaces_resp = await client.get("/workspaces", headers={"Authorization": f"Bearer {token}"})
+    workspaces = workspaces_resp.json()
+    assert len(workspaces) == 1
+    assert workspaces[0]["name"] == "My Freight Team"
+    assert workspaces[0]["role"] == "owner"
+
+
 async def test_duplicate_register_rejected(client):
     payload = {"email": "dup@example.com", "password": "testpassword123"}
     first = await client.post("/auth/register", json=payload)

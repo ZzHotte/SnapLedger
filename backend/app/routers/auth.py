@@ -7,11 +7,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.constants import CATEGORIES
 from app.database import get_db
 from app.deps import get_current_user
 from app.google_oauth import build_google_auth_url, exchange_code_for_userinfo
-from app.models import Category, Ledger, LedgerMember, LedgerRole, MemberStatus, User
+from app.models import MemberStatus, User, Workspace, WorkspaceMember, WorkspaceRole
 from app.schemas import LoginRequest, RegisterRequest, TokenResponse, UserOut
 from app.security import create_access_token, hash_password, verify_password
 
@@ -19,24 +18,22 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 settings = get_settings()
 
 
-async def create_personal_ledger(db: AsyncSession, user: User) -> Ledger:
-    ledger = Ledger(name="Personal", owner_id=user.id)
-    db.add(ledger)
+async def create_personal_workspace(db: AsyncSession, user: User) -> Workspace:
+    workspace = Workspace(name="My Freight Team", owner_id=user.id)
+    db.add(workspace)
     await db.flush()
 
     db.add(
-        LedgerMember(
-            ledger_id=ledger.id,
+        WorkspaceMember(
+            workspace_id=workspace.id,
             user_id=user.id,
-            role=LedgerRole.owner,
+            role=WorkspaceRole.owner,
             status=MemberStatus.active,
             joined_at=datetime.now(timezone.utc),
         )
     )
-    for name in CATEGORIES:
-        db.add(Category(ledger_id=ledger.id, name=name, is_default=True))
 
-    return ledger
+    return workspace
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
@@ -53,7 +50,7 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     db.add(user)
     await db.flush()
 
-    await create_personal_ledger(db, user)
+    await create_personal_workspace(db, user)
     await db.commit()
     await db.refresh(user)
 
@@ -97,7 +94,7 @@ async def google_callback(code: str, db: AsyncSession = Depends(get_db)):
         )
         db.add(user)
         await db.flush()
-        await create_personal_ledger(db, user)
+        await create_personal_workspace(db, user)
     elif user.google_id is None:
         user.google_id = google_id
 

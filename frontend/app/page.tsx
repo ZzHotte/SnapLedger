@@ -3,24 +3,24 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
-import { useLedger } from "@/lib/ledger-context";
+import { useWorkspace } from "@/lib/workspace-context";
 import { ApiError, generateMockData } from "@/lib/api";
 import { MOCK_DATA_COUNT } from "@/lib/constants";
-import UploadReceiptModal from "@/components/UploadReceiptModal";
-import TransactionsTable from "@/components/TransactionsTable";
+import UploadDocumentModal from "@/components/UploadDocumentModal";
+import ShipmentsTable from "@/components/ShipmentsTable";
 
 export default function Home() {
   const { user, loading } = useAuth();
-  const { currentLedger } = useLedger();
+  const { currentWorkspace, loading: workspaceLoading } = useWorkspace();
   const [refreshKey, setRefreshKey] = useState(0);
   const [generatingMockData, setGeneratingMockData] = useState(false);
   const [mockDataError, setMockDataError] = useState<string | null>(null);
 
   async function handleGenerateMockData() {
-    if (!currentLedger) return;
+    if (!currentWorkspace) return;
     if (
       !window.confirm(
-        `Generate ${MOCK_DATA_COUNT.toLocaleString()} mock transactions in this ledger? This can't be undone from the UI.`
+        `Generate ${MOCK_DATA_COUNT.toLocaleString()} mock shipments in this workspace? This requires at least one customer to already exist, and can't be undone from the UI.`
       )
     ) {
       return;
@@ -28,7 +28,7 @@ export default function Home() {
     setGeneratingMockData(true);
     setMockDataError(null);
     try {
-      await generateMockData(currentLedger.id, MOCK_DATA_COUNT);
+      await generateMockData(currentWorkspace.id, MOCK_DATA_COUNT);
       setRefreshKey((k) => k + 1);
     } catch (err) {
       setMockDataError(err instanceof ApiError ? err.message : "Failed to generate mock data");
@@ -48,7 +48,7 @@ export default function Home() {
   if (!user) {
     return (
       <main className="flex flex-1 flex-col items-center justify-center gap-6">
-        <h1 className="text-2xl font-semibold">SnapLedger</h1>
+        <h1 className="text-2xl font-semibold">SnapLedger Freight CRM</h1>
         <div className="flex gap-3">
           <Link href="/login" className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white">
             Log in
@@ -62,11 +62,11 @@ export default function Home() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-6">
+    <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Welcome, {user.name || user.email}</h1>
         <div className="flex items-center gap-2">
-          {currentLedger?.role === "owner" && (
+          {currentWorkspace?.role === "owner" && (
             <button
               onClick={handleGenerateMockData}
               disabled={generatingMockData}
@@ -75,15 +75,21 @@ export default function Home() {
               {generatingMockData ? "Generating…" : "Generate Mock Data"}
             </button>
           )}
-          {currentLedger?.role !== "viewer" && (
-            <UploadReceiptModal onSaved={() => setRefreshKey((k) => k + 1)} />
+          {currentWorkspace?.role !== "viewer" && (
+            <UploadDocumentModal onSaved={() => setRefreshKey((k) => k + 1)} />
           )}
         </div>
       </div>
 
       {mockDataError && <p className="text-sm text-red-600">{mockDataError}</p>}
 
-      <TransactionsTable refreshKey={refreshKey} />
+      {!workspaceLoading && !currentWorkspace ? (
+        <p className="text-sm text-red-600">
+          No workspace found for this account. Try refreshing — if this persists, contact support.
+        </p>
+      ) : (
+        <ShipmentsTable refreshKey={refreshKey} />
+      )}
     </main>
   );
 }

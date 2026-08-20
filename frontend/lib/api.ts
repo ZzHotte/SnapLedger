@@ -101,17 +101,17 @@ export function googleLoginUrl() {
   return `${API_URL}/auth/google/login`;
 }
 
-export interface Ledger {
+export interface Workspace {
   id: number;
   name: string;
   role: "owner" | "editor" | "viewer";
 }
 
-export function fetchLedgers() {
-  return request<Ledger[]>("/ledgers");
+export function fetchWorkspaces() {
+  return request<Workspace[]>("/workspaces");
 }
 
-export interface LedgerMember {
+export interface WorkspaceMember {
   user_id: number;
   email: string;
   name: string | null;
@@ -119,19 +119,19 @@ export interface LedgerMember {
   joined_at: string | null;
 }
 
-export function fetchLedgerMembers(ledgerId: number) {
-  return request<LedgerMember[]>(`/ledgers/${ledgerId}/members`);
+export function fetchWorkspaceMembers(workspaceId: number) {
+  return request<WorkspaceMember[]>(`/workspaces/${workspaceId}/members`);
 }
 
-export function updateMemberRole(ledgerId: number, userId: number, role: "editor" | "viewer") {
-  return request<LedgerMember>(`/ledgers/${ledgerId}/members/${userId}`, {
+export function updateMemberRole(workspaceId: number, userId: number, role: "editor" | "viewer") {
+  return request<WorkspaceMember>(`/workspaces/${workspaceId}/members/${userId}`, {
     method: "PATCH",
     body: JSON.stringify({ role }),
   });
 }
 
-export function removeMember(ledgerId: number, userId: number) {
-  return request<void>(`/ledgers/${ledgerId}/members/${userId}`, { method: "DELETE" });
+export function removeMember(workspaceId: number, userId: number) {
+  return request<void>(`/workspaces/${workspaceId}/members/${userId}`, { method: "DELETE" });
 }
 
 export interface Invite {
@@ -141,127 +141,222 @@ export interface Invite {
   expires_at: string | null;
 }
 
-export function createInvite(ledgerId: number, role: "editor" | "viewer") {
-  return request<Invite>(`/ledgers/${ledgerId}/invites`, {
+export function createInvite(workspaceId: number, role: "editor" | "viewer") {
+  return request<Invite>(`/workspaces/${workspaceId}/invites`, {
     method: "POST",
     body: JSON.stringify({ role }),
   });
 }
 
 export interface AcceptInviteResult {
-  ledger_id: number;
-  ledger_name: string;
+  workspace_id: number;
+  workspace_name: string;
   role: "owner" | "editor" | "viewer";
 }
 
 export function acceptInvite(code: string) {
-  return request<AcceptInviteResult>(`/ledgers/invites/${code}/accept`, { method: "POST" });
+  return request<AcceptInviteResult>(`/workspaces/invites/${code}/accept`, { method: "POST" });
 }
 
-export interface Receipt {
+export interface Customer {
   id: number;
-  image_url: string;
-  status: string;
-  merchant: string | null;
-  transaction_date: string | null;
-  amount: number | null;
-  currency: string | null;
-  category: string | null;
+  name: string;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
 }
 
-export interface ConfirmReceiptPayload {
-  merchant: string | null;
-  transaction_date: string;
-  amount: number;
-  currency: string;
-  category: string;
-  note?: string;
+export function fetchCustomers(workspaceId: number) {
+  return request<Customer[]>(`/customers?workspace_id=${workspaceId}`);
 }
 
-export interface Transaction {
-  id: number;
-  amount: number;
-  currency: string;
-  merchant: string | null;
-  transaction_date: string;
-  category: string | null;
-  receipt_image_url: string | null;
-  created_at: string;
-}
-
-export function uploadReceipt(file: File, ledgerId: number) {
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("ledger_id", String(ledgerId));
-  return requestForm<Receipt>("/receipts/upload", formData);
-}
-
-export function confirmReceipt(receiptId: number, payload: ConfirmReceiptPayload, ledgerId: number) {
-  return request<Transaction>(`/receipts/${receiptId}/confirm?ledger_id=${ledgerId}`, {
+export function createCustomer(
+  workspaceId: number,
+  payload: { name: string; contact_name?: string | null; contact_email?: string | null; contact_phone?: string | null }
+) {
+  return request<Customer>(`/customers?workspace_id=${workspaceId}`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
-export interface TransactionListResult {
-  items: Transaction[];
+export interface Carrier {
+  id: number;
+  name: string;
+  mode: string;
+  contact_email: string | null;
+}
+
+export function fetchCarriers(workspaceId: number) {
+  return request<Carrier[]>(`/carriers?workspace_id=${workspaceId}`);
+}
+
+export function createCarrier(workspaceId: number, payload: { name: string; mode: string; contact_email?: string | null }) {
+  return request<Carrier>(`/carriers?workspace_id=${workspaceId}`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface Document {
+  id: number;
+  file_url: string;
+  status: string;
+  doc_type: string | null;
+  bl_number: string | null;
+  shipper: string | null;
+  consignee: string | null;
+  origin_port: string | null;
+  destination_port: string | null;
+  cargo_description: string | null;
+  weight_kg: number | null;
+}
+
+export interface ConfirmDocumentPayload {
+  customer_id: number;
+  carrier_id?: number | null;
+  freight_mode: string;
+  origin_port?: string | null;
+  destination_port?: string | null;
+  cargo_description?: string | null;
+  container_no?: string | null;
+  weight_kg?: number | null;
+  freight_cost?: number | null;
+  currency: string;
+  shipment_date: string;
+  eta?: string | null;
+  note?: string | null;
+}
+
+export interface Shipment {
+  id: number;
+  customer_name: string | null;
+  carrier_name: string | null;
+  freight_mode: string;
+  origin_port: string | null;
+  destination_port: string | null;
+  cargo_description: string | null;
+  container_no: string | null;
+  weight_kg: number | null;
+  freight_cost: number | null;
+  currency: string;
+  status: string;
+  shipment_date: string;
+  eta: string | null;
+  document_file_url: string | null;
+  created_at: string;
+}
+
+export function uploadDocument(file: File, workspaceId: number) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("workspace_id", String(workspaceId));
+  return requestForm<Document>("/documents/upload", formData);
+}
+
+export function confirmDocument(documentId: number, payload: ConfirmDocumentPayload, workspaceId: number) {
+  return request<Shipment>(`/documents/${documentId}/confirm?workspace_id=${workspaceId}`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface ShipmentListResult {
+  items: Shipment[];
   total: number;
 }
 
-export function fetchTransactions(ledgerId: number, limit: number, offset: number) {
-  return request<TransactionListResult>(`/transactions?ledger_id=${ledgerId}&limit=${limit}&offset=${offset}`);
+export function fetchShipments(workspaceId: number, limit: number, offset: number) {
+  return request<ShipmentListResult>(`/shipments?workspace_id=${workspaceId}&limit=${limit}&offset=${offset}`);
 }
 
-export function generateMockData(ledgerId: number, count: number) {
-  return request<{ created: number }>(`/transactions/mock-data?ledger_id=${ledgerId}&count=${count}`, {
+export function generateMockData(workspaceId: number, count: number) {
+  return request<{ created: number }>(`/shipments/mock-data?workspace_id=${workspaceId}&count=${count}`, {
     method: "POST",
   });
 }
 
-export interface CategorySpend {
-  category: string;
+export interface Quote {
+  id: number;
+  carrier_name: string;
   amount: number;
+  currency: string;
+  valid_until: string | null;
+  status: string;
+  created_at: string;
 }
 
-export interface MonthlyTotal {
+export interface TrackingEvent {
+  id: number;
+  status: string;
+  location: string | null;
+  event_date: string;
+  note: string | null;
+}
+
+export interface ShipmentDetail extends Shipment {
+  quotes: Quote[];
+  tracking_events: TrackingEvent[];
+}
+
+export function fetchShipment(shipmentId: number, workspaceId: number) {
+  return request<ShipmentDetail>(`/shipments/${shipmentId}?workspace_id=${workspaceId}`);
+}
+
+export function updateShipmentStatus(shipmentId: number, status: string, workspaceId: number) {
+  return request<Shipment>(`/shipments/${shipmentId}/status?workspace_id=${workspaceId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+}
+
+export function addTrackingEvent(
+  shipmentId: number,
+  payload: { status: string; location?: string | null; event_date: string; note?: string | null },
+  workspaceId: number
+) {
+  return request<TrackingEvent>(`/shipments/${shipmentId}/tracking-events?workspace_id=${workspaceId}`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function addQuote(
+  shipmentId: number,
+  payload: { carrier_id: number; amount: number; currency: string; valid_until?: string | null },
+  workspaceId: number
+) {
+  return request<Quote>(`/shipments/${shipmentId}/quotes?workspace_id=${workspaceId}`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface StatusBreakdown {
+  status: string;
+  count: number;
+}
+
+export interface MonthlyShipmentCount {
   month: string;
-  amount: number;
+  count: number;
 }
 
-export interface BudgetProgress {
-  category: string;
-  planned_amount: number;
-  actual_amount: number;
+export interface TopCustomer {
+  customer_name: string;
+  shipment_count: number;
 }
 
 export interface DashboardSummary {
   month: string;
-  total_spent: number;
-  category_breakdown: CategorySpend[];
-  monthly_trend: MonthlyTotal[];
-  budgets: BudgetProgress[];
+  total_shipments: number;
+  status_breakdown: StatusBreakdown[];
+  monthly_trend: MonthlyShipmentCount[];
+  top_customers: TopCustomer[];
 }
 
-export function fetchDashboardSummary(ledgerId: number, month: string) {
-  return request<DashboardSummary>(`/dashboard/summary?ledger_id=${ledgerId}&month=${month}`);
-}
-
-export interface Budget {
-  id: number;
-  category: string;
-  month: string;
-  planned_amount: number;
-}
-
-export function fetchBudgets(ledgerId: number, month: string) {
-  return request<Budget[]>(`/budgets?ledger_id=${ledgerId}&month=${month}`);
-}
-
-export function upsertBudget(ledgerId: number, category: string, month: string, plannedAmount: number) {
-  return request<Budget>(`/budgets?ledger_id=${ledgerId}`, {
-    method: "PUT",
-    body: JSON.stringify({ category, month, planned_amount: plannedAmount }),
-  });
+export function fetchDashboardSummary(workspaceId: number, month: string) {
+  return request<DashboardSummary>(`/dashboard/summary?workspace_id=${workspaceId}&month=${month}`);
 }
 
 export interface ExchangeRate {

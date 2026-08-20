@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AuthProvider } from "@/lib/auth-context";
-import { LedgerProvider } from "@/lib/ledger-context";
+import { WorkspaceProvider } from "@/lib/workspace-context";
 import NavBar from "@/components/NavBar";
 import InstallPrompt from "@/components/InstallPrompt";
 import "./globals.css";
@@ -44,8 +44,8 @@ const APPLE_SPLASH_SCREENS: Array<{ file: string; media: string }> = [
 ];
 
 export const metadata: Metadata = {
-  title: "SnapLedger - Simple Personal Budget Planning",
-  description: "Snap a receipt, get it auto-logged. Personal expense tracking, shared with up to 5 people.",
+  title: "SnapLedger - Freight Forwarding CRM",
+  description: "Snap a shipping document, get it auto-logged. Track shipments, quotes, and customers, shared with up to 5 teammates.",
   appleWebApp: {
     title: "SnapLedger",
     statusBarStyle: "default",
@@ -68,11 +68,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <AuthProvider>
-          <LedgerProvider>
+          <WorkspaceProvider>
             <NavBar />
             {children}
             <InstallPrompt />
-          </LedgerProvider>
+          </WorkspaceProvider>
         </AuthProvider>
       </body>
     </html>

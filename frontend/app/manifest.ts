@@ -2,10 +2,10 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "SnapLedger - Simple Personal Budget Planning",
+    name: "SnapLedger - Freight Forwarding CRM",
     short_name: "SnapLedger",
     description:
-      "Snap a receipt, get it auto-logged. Personal expense tracking, shared with up to 5 people.",
+      "Snap a shipping document, get it auto-logged. Track shipments, quotes, and customers, shared with up to 5 teammates.",
     start_url: "/",
     display: "standalone",
     background_color: "#ffffff",

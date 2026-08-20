@@ -1,10 +1,7 @@
 from datetime import date
-from decimal import Decimal
-
-from sqlalchemy import select
 
 from app.dashboard import last_n_months, month_bounds
-from app.models import Category, Transaction
+from app.models import Customer, FreightMode, Shipment, ShipmentStatus
 
 
 async def _register(client, email) -> str:
@@ -12,27 +9,34 @@ async def _register(client, email) -> str:
     return resp.json()["access_token"]
 
 
-async def _ledger_id(client, token) -> int:
-    resp = await client.get("/ledgers", headers={"Authorization": f"Bearer {token}"})
+async def _workspace_id(client, token) -> int:
+    resp = await client.get("/workspaces", headers={"Authorization": f"Bearer {token}"})
     return resp.json()[0]["id"]
 
 
-async def _add_transaction(client, ledger_id, token, category_name, amount, tx_date):
+async def _add_customer(client, workspace_id, name) -> int:
+    async with client.session_maker() as db:
+        customer = Customer(workspace_id=workspace_id, name=name)
+        db.add(customer)
+        await db.commit()
+        await db.refresh(customer)
+        return customer.id
+
+
+async def _add_shipment(client, workspace_id, token, ship_date, status=ShipmentStatus.inquiry, customer_id=None):
     me = await client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
     user_id = me.json()["id"]
 
     async with client.session_maker() as db:
-        category = await db.scalar(
-            select(Category).where(Category.ledger_id == ledger_id, Category.name == category_name)
-        )
         db.add(
-            Transaction(
-                ledger_id=ledger_id,
+            Shipment(
+                workspace_id=workspace_id,
                 created_by=user_id,
-                amount=Decimal(str(amount)),
+                customer_id=customer_id,
+                freight_mode=FreightMode.FCL,
                 currency="USD",
-                category_id=category.id,
-                transaction_date=date.fromisoformat(tx_date),
+                status=status,
+                shipment_date=date.fromisoformat(ship_date),
             )
         )
         await db.commit()
@@ -57,77 +61,75 @@ async def test_dashboard_defaults_to_current_month(client):
     assert resp.json()["month"] == date.today().strftime("%Y-%m")
 
 
-async def test_dashboard_aggregates_category_breakdown_and_total(client):
+async def test_dashboard_aggregates_status_breakdown_and_total(client):
     token = await _register(client, "user2@example.com")
-    ledger_id = await _ledger_id(client, token)
-    await _add_transaction(client, ledger_id, token, "Food", "50.00", "2026-08-05")
-    await _add_transaction(client, ledger_id, token, "Food", "25.50", "2026-08-10")
-    await _add_transaction(client, ledger_id, token, "Transport", "10.00", "2026-08-15")
+    workspace_id = await _workspace_id(client, token)
+    await _add_shipment(client, workspace_id, token, "2026-08-05", status=ShipmentStatus.booked)
+    await _add_shipment(client, workspace_id, token, "2026-08-10", status=ShipmentStatus.booked)
+    await _add_shipment(client, workspace_id, token, "2026-08-15", status=ShipmentStatus.delivered)
     # outside the requested month — must not be counted
-    await _add_transaction(client, ledger_id, token, "Food", "999.00", "2026-07-20")
+    await _add_shipment(client, workspace_id, token, "2026-07-20", status=ShipmentStatus.booked)
 
     resp = await client.get(
-        f"/dashboard/summary?ledger_id={ledger_id}&month=2026-08", headers={"Authorization": f"Bearer {token}"}
+        f"/dashboard/summary?workspace_id={workspace_id}&month=2026-08", headers={"Authorization": f"Bearer {token}"}
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["total_spent"] == 85.5
-    breakdown = {c["category"]: c["amount"] for c in body["category_breakdown"]}
-    assert breakdown == {"Food": 75.5, "Transport": 10.0}
+    assert body["total_shipments"] == 3
+    breakdown = {s["status"]: s["count"] for s in body["status_breakdown"]}
+    assert breakdown == {"booked": 2, "delivered": 1}
+    # sorted by count descending
+    assert body["status_breakdown"][0]["status"] == "booked"
 
 
-async def test_dashboard_monthly_trend_covers_six_months_including_older_spend(client):
+async def test_dashboard_monthly_trend_covers_six_months_including_older_shipments(client):
     token = await _register(client, "user3@example.com")
-    ledger_id = await _ledger_id(client, token)
-    await _add_transaction(client, ledger_id, token, "Food", "100.00", "2026-08-01")
-    await _add_transaction(client, ledger_id, token, "Food", "40.00", "2026-05-01")
+    workspace_id = await _workspace_id(client, token)
+    await _add_shipment(client, workspace_id, token, "2026-08-01")
+    await _add_shipment(client, workspace_id, token, "2026-08-02")
+    await _add_shipment(client, workspace_id, token, "2026-05-01")
 
     resp = await client.get(
-        f"/dashboard/summary?ledger_id={ledger_id}&month=2026-08", headers={"Authorization": f"Bearer {token}"}
+        f"/dashboard/summary?workspace_id={workspace_id}&month=2026-08", headers={"Authorization": f"Bearer {token}"}
     )
-    trend = {t["month"]: t["amount"] for t in resp.json()["monthly_trend"]}
+    trend = {t["month"]: t["count"] for t in resp.json()["monthly_trend"]}
     assert trend == {
-        "2026-03": 0.0,
-        "2026-04": 0.0,
-        "2026-05": 40.0,
-        "2026-06": 0.0,
-        "2026-07": 0.0,
-        "2026-08": 100.0,
+        "2026-03": 0,
+        "2026-04": 0,
+        "2026-05": 1,
+        "2026-06": 0,
+        "2026-07": 0,
+        "2026-08": 2,
     }
 
 
-async def test_dashboard_budget_vs_actual_includes_zero_spend_and_excludes_unbudgeted_categories(client):
+async def test_dashboard_top_customers_orders_by_count_and_groups_unassigned(client):
     token = await _register(client, "user4@example.com")
-    headers = {"Authorization": f"Bearer {token}"}
-    ledger_id = await _ledger_id(client, token)
+    workspace_id = await _workspace_id(client, token)
+    big_customer = await _add_customer(client, workspace_id, "Big Shipper Co")
+    small_customer = await _add_customer(client, workspace_id, "Small Shipper Co")
 
-    await client.put(
-        f"/budgets?ledger_id={ledger_id}", headers=headers, json={"category": "Food", "month": "2026-08", "planned_amount": 200}
+    await _add_shipment(client, workspace_id, token, "2026-08-03", customer_id=big_customer)
+    await _add_shipment(client, workspace_id, token, "2026-08-04", customer_id=big_customer)
+    await _add_shipment(client, workspace_id, token, "2026-08-05", customer_id=small_customer)
+    # no customer attached — should be grouped under "Unassigned"
+    await _add_shipment(client, workspace_id, token, "2026-08-06", customer_id=None)
+
+    resp = await client.get(
+        f"/dashboard/summary?workspace_id={workspace_id}&month=2026-08", headers={"Authorization": f"Bearer {token}"}
     )
-    await client.put(
-        f"/budgets?ledger_id={ledger_id}",
-        headers=headers,
-        json={"category": "Entertainment", "month": "2026-08", "planned_amount": 50},
-    )
-    await _add_transaction(client, ledger_id, token, "Food", "120.00", "2026-08-03")
-    # Transport has spend but no budget — shouldn't show up in `budgets`
-    await _add_transaction(client, ledger_id, token, "Transport", "30.00", "2026-08-04")
-
-    resp = await client.get(f"/dashboard/summary?ledger_id={ledger_id}&month=2026-08", headers=headers)
-    budgets = {b["category"]: b for b in resp.json()["budgets"]}
-    assert budgets["Food"]["planned_amount"] == 200.0
-    assert budgets["Food"]["actual_amount"] == 120.0
-    assert budgets["Entertainment"]["planned_amount"] == 50.0
-    assert budgets["Entertainment"]["actual_amount"] == 0.0
-    assert "Transport" not in budgets
+    top_customers = resp.json()["top_customers"]
+    counts = {c["customer_name"]: c["shipment_count"] for c in top_customers}
+    assert counts == {"Big Shipper Co": 2, "Small Shipper Co": 1, "Unassigned": 1}
+    assert top_customers[0]["customer_name"] == "Big Shipper Co"
 
 
-async def test_dashboard_404_for_ledger_caller_is_not_a_member_of(client):
+async def test_dashboard_404_for_workspace_caller_is_not_a_member_of(client):
     owner_token = await _register(client, "owner5@example.com")
-    ledger_id = await _ledger_id(client, owner_token)
+    workspace_id = await _workspace_id(client, owner_token)
     outsider_token = await _register(client, "outsider5@example.com")
 
     resp = await client.get(
-        f"/dashboard/summary?ledger_id={ledger_id}", headers={"Authorization": f"Bearer {outsider_token}"}
+        f"/dashboard/summary?workspace_id={workspace_id}", headers={"Authorization": f"Bearer {outsider_token}"}
     )
     assert resp.status_code == 404

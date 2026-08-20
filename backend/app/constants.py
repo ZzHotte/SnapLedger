@@ -1,4 +1,4 @@
-"""Business-tunable constants — external APIs the backend calls, category
+"""Business-tunable constants — external APIs the backend calls, freight
 defaults, and mock-data knobs — kept in one place since these are still
 being decided/adjusted, unlike settings that come from the environment
 (see app/config.py) or purely internal implementation details.
@@ -11,11 +11,13 @@ hand-copied bank rate seed data for an example.
 
 from datetime import timedelta
 
-# --- Default expense categories ---
-# Used both to seed a new ledger (app/routers/auth.py) and to steer the
-# Gemini receipt-extraction prompt (app/gemini.py) — kept as a single list
-# so the two can't silently drift apart.
-CATEGORIES = ["Food", "Transport", "Shopping", "Bills", "Entertainment", "Other"]
+# --- Freight modes ---
+# Steers the Gemini document-extraction prompt (app/gemini.py) toward a
+# recognized shipment mode; also mirrored in frontend/lib/constants.ts.
+FREIGHT_MODES = ["FCL", "LCL", "AIR", "RAIL", "ROAD"]
+
+# --- Document types the OCR pipeline recognizes ---
+DOCUMENT_TYPES = ["bill_of_lading", "commercial_invoice", "packing_list", "other"]
 
 # --- External public APIs ---
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -35,23 +37,26 @@ GDP_TTL = timedelta(days=30)
 # a free-floating list a new entry could be added to without also wiring up
 # real data for it.
 
-# --- Mock data generator (app/routers/transactions.py) ---
+# --- Mock data generator (app/routers/shipments.py) ---
 MAX_MOCK_COUNT = 20_000
 DEFAULT_MOCK_COUNT = 10_000
-MOCK_MERCHANTS = [
-    "Trader Joe's",
-    "Shell Gas Station",
-    "Amazon",
-    "Target",
-    "Starbucks",
-    "Uber",
-    "Netflix",
-    "Whole Foods",
-    "Costco",
-    "Corner Cafe",
-    "AMC Theatres",
-    "Home Depot",
-    "IKEA",
-    "CVS Pharmacy",
-    "Chipotle",
+MOCK_PORTS = [
+    ("Shanghai, CN", "Los Angeles, US"),
+    ("Ningbo, CN", "Rotterdam, NL"),
+    ("Shenzhen, CN", "Hamburg, DE"),
+    ("Singapore, SG", "Sydney, AU"),
+    ("Hong Kong, HK", "Long Beach, US"),
+    ("Busan, KR", "Melbourne, AU"),
+    ("Yantian, CN", "New York, US"),
+    ("Qingdao, CN", "Antwerp, BE"),
+]
+MOCK_CARGO = [
+    "Electronics components",
+    "Furniture",
+    "Apparel",
+    "Machinery parts",
+    "Consumer packaged goods",
+    "Auto parts",
+    "Solar panels",
+    "Toys",
 ]

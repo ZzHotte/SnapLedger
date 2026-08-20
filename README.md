@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/ZzHotte/SnapLedger/actions/workflows/ci.yml/badge.svg)](https://github.com/ZzHotte/SnapLedger/actions/workflows/ci.yml)
 
-Lightweight personal expense tracking and financial planning app that makes everyday budgeting easier. Simply snap a photo of a receipt and let AI extract key transaction details for review and quick logging. Create personal or shared ledgers with up to five friends or family members, track spending patterns through interactive summaries, and gain clearer insights into where your money goes.
+Lightweight freight-forwarding CRM that makes shipment tracking easier. Simply snap a photo of a bill of lading or invoice and let AI extract key shipment details for review and quick logging. Manage customers, carriers, and quotes in a team workspace shared with up to five colleagues, track shipment status through an interactive dashboard, and gain clearer visibility into what's moving where.
 
 ## Stack
 

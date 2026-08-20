@@ -4,24 +4,24 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { useLedger } from "@/lib/ledger-context";
+import { useWorkspace } from "@/lib/workspace-context";
 import {
   ApiError,
   createInvite,
-  fetchLedgerMembers,
+  fetchWorkspaceMembers,
   removeMember,
   updateMemberRole,
-  type LedgerMember,
+  type WorkspaceMember,
 } from "@/lib/api";
 
 const MAX_MEMBERS = 5;
 
-export default function MembersPageClient({ ledgerId }: { ledgerId: number }) {
+export default function MembersPageClient({ workspaceId }: { workspaceId: number }) {
   const { user } = useAuth();
-  const { refresh: refreshLedgers } = useLedger();
+  const { refresh: refreshWorkspaces } = useWorkspace();
   const router = useRouter();
 
-  const [members, setMembers] = useState<LedgerMember[] | null>(null);
+  const [members, setMembers] = useState<WorkspaceMember[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [inviteRole, setInviteRole] = useState<"editor" | "viewer">("editor");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
@@ -29,7 +29,7 @@ export default function MembersPageClient({ ledgerId }: { ledgerId: number }) {
 
   async function load() {
     try {
-      const data = await fetchLedgerMembers(ledgerId);
+      const data = await fetchWorkspaceMembers(workspaceId);
       setMembers(data);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load members");
@@ -38,11 +38,11 @@ export default function MembersPageClient({ ledgerId }: { ledgerId: number }) {
 
   useEffect(() => {
     // load is also called from action handlers below to re-sync after a mutation,
-    // so it's defined outside this effect — same false positive as ledger-context.tsx.
+    // so it's defined outside this effect — same false positive as workspace-context.tsx.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ledgerId]);
+  }, [workspaceId]);
 
   const me = members?.find((m) => m.user_id === user?.id) ?? null;
   const isOwner = me?.role === "owner";
@@ -51,7 +51,7 @@ export default function MembersPageClient({ ledgerId }: { ledgerId: number }) {
     setBusy(true);
     setError(null);
     try {
-      const invite = await createInvite(ledgerId, inviteRole);
+      const invite = await createInvite(workspaceId, inviteRole);
       setInviteLink(`${window.location.origin}/invites/${invite.invite_code}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to create invite");
@@ -63,7 +63,7 @@ export default function MembersPageClient({ ledgerId }: { ledgerId: number }) {
   async function handleRoleChange(userId: number, role: "editor" | "viewer") {
     setError(null);
     try {
-      await updateMemberRole(ledgerId, userId, role);
+      await updateMemberRole(workspaceId, userId, role);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to update role");
@@ -73,9 +73,9 @@ export default function MembersPageClient({ ledgerId }: { ledgerId: number }) {
   async function handleRemove(userId: number) {
     setError(null);
     try {
-      await removeMember(ledgerId, userId);
+      await removeMember(workspaceId, userId);
       if (userId === user?.id) {
-        await refreshLedgers();
+        await refreshWorkspaces();
         router.push("/");
         return;
       }
@@ -88,7 +88,7 @@ export default function MembersPageClient({ ledgerId }: { ledgerId: number }) {
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Ledger members</h1>
+        <h1 className="text-xl font-semibold">Team members</h1>
         <Link href="/" className="text-sm text-gray-500 underline">
           Back
         </Link>
@@ -134,7 +134,7 @@ export default function MembersPageClient({ ledgerId }: { ledgerId: number }) {
         <div className="space-y-3 rounded-md border border-gray-200 p-4">
           <h2 className="text-sm font-medium">Invite someone</h2>
           {members.length >= MAX_MEMBERS ? (
-            <p className="text-sm text-gray-500">This ledger has reached the {MAX_MEMBERS}-member limit.</p>
+            <p className="text-sm text-gray-500">This workspace has reached the {MAX_MEMBERS}-member limit.</p>
           ) : (
             <>
               <div className="flex items-center gap-3">

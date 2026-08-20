@@ -30,13 +30,13 @@ class TokenResponse(BaseModel):
     user: UserOut
 
 
-class LedgerOut(BaseModel):
+class WorkspaceOut(BaseModel):
     id: int
     name: str
     role: str
 
 
-class LedgerMemberOut(BaseModel):
+class WorkspaceMemberOut(BaseModel):
     user_id: int
     email: str
     name: str | None
@@ -57,8 +57,8 @@ class InviteOut(BaseModel):
 
 
 class AcceptInviteResponse(BaseModel):
-    ledger_id: int
-    ledger_name: str
+    workspace_id: int
+    workspace_name: str
     role: str
 
 
@@ -66,84 +66,172 @@ class UpdateMemberRoleRequest(BaseModel):
     role: str = Field(pattern="^(editor|viewer)$")
 
 
-class ReceiptOut(BaseModel):
+class CustomerOut(BaseModel):
     id: int
-    image_url: str
+    name: str
+    contact_name: str | None
+    contact_email: str | None
+    contact_phone: str | None
+
+
+class CreateCustomerRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    contact_name: str | None = Field(default=None, max_length=255)
+    contact_email: EmailStr | None = None
+    contact_phone: str | None = Field(default=None, max_length=50)
+
+
+class CarrierOut(BaseModel):
+    id: int
+    name: str
+    mode: str
+    contact_email: str | None
+
+
+class CreateCarrierRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    mode: str = Field(pattern="^(FCL|LCL|AIR|RAIL|ROAD)$")
+    contact_email: EmailStr | None = None
+
+
+class DocumentOut(BaseModel):
+    id: int
+    file_url: str
     status: str
-    merchant: str | None
-    transaction_date: date | None
-    amount: float | None
-    currency: str | None
-    category: str | None
+    doc_type: str | None
+    bl_number: str | None
+    shipper: str | None
+    consignee: str | None
+    origin_port: str | None
+    destination_port: str | None
+    cargo_description: str | None
+    weight_kg: float | None
 
 
-class ConfirmReceiptRequest(BaseModel):
-    merchant: str | None = Field(default=None, max_length=255)
-    transaction_date: date
-    amount: float = Field(gt=0)
+class ConfirmDocumentRequest(BaseModel):
+    customer_id: int
+    carrier_id: int | None = None
+    freight_mode: str = Field(pattern="^(FCL|LCL|AIR|RAIL|ROAD)$")
+    origin_port: str | None = Field(default=None, max_length=255)
+    destination_port: str | None = Field(default=None, max_length=255)
+    cargo_description: str | None = Field(default=None, max_length=500)
+    container_no: str | None = Field(default=None, max_length=50)
+    weight_kg: float | None = Field(default=None, gt=0)
+    freight_cost: float | None = Field(default=None, gt=0)
     currency: str = Field(min_length=3, max_length=3)
-    category: str
+    shipment_date: date
+    eta: date | None = None
     note: str | None = Field(default=None, max_length=500)
 
 
-class TransactionOut(BaseModel):
+class ShipmentOut(BaseModel):
     id: int
-    amount: float
+    customer_name: str | None
+    carrier_name: str | None
+    freight_mode: str
+    origin_port: str | None
+    destination_port: str | None
+    cargo_description: str | None
+    container_no: str | None
+    weight_kg: float | None
+    freight_cost: float | None
     currency: str
-    merchant: str | None
-    transaction_date: date
-    category: str | None
-    receipt_image_url: str | None
+    status: str
+    shipment_date: date
+    eta: date | None
+    document_file_url: str | None
     created_at: datetime
 
 
-class TransactionListOut(BaseModel):
-    items: list[TransactionOut]
+class ShipmentListOut(BaseModel):
+    items: list[ShipmentOut]
     total: int
+
+
+class UpdateShipmentStatusRequest(BaseModel):
+    status: str = Field(
+        pattern="^(inquiry|quoted|booked|in_transit|arrived|customs|delivered|cancelled)$"
+    )
 
 
 class GenerateMockDataResponse(BaseModel):
     created: int
 
 
+class QuoteOut(BaseModel):
+    id: int
+    carrier_name: str
+    amount: float
+    currency: str
+    valid_until: date | None
+    status: str
+    created_at: datetime
+
+
+class CreateQuoteRequest(BaseModel):
+    carrier_id: int
+    amount: float = Field(gt=0)
+    currency: str = Field(min_length=3, max_length=3)
+    valid_until: date | None = None
+
+
+class TrackingEventOut(BaseModel):
+    id: int
+    status: str
+    location: str | None
+    event_date: date
+    note: str | None
+
+
+class CreateTrackingEventRequest(BaseModel):
+    status: str = Field(
+        pattern="^(inquiry|quoted|booked|in_transit|arrived|customs|delivered|cancelled)$"
+    )
+    location: str | None = Field(default=None, max_length=255)
+    event_date: date
+    note: str | None = Field(default=None, max_length=500)
+
+
+class ShipmentDetailOut(ShipmentOut):
+    quotes: list[QuoteOut]
+    tracking_events: list[TrackingEventOut]
+
+
+STATUS_LIST = [
+    "inquiry",
+    "quoted",
+    "booked",
+    "in_transit",
+    "arrived",
+    "customs",
+    "delivered",
+    "cancelled",
+]
+
 MONTH_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
 
 
-class BudgetOut(BaseModel):
-    id: int
-    category: str
+class StatusBreakdown(BaseModel):
+    status: str
+    count: int
+
+
+class MonthlyShipmentCount(BaseModel):
     month: str
-    planned_amount: float
+    count: int
 
 
-class UpsertBudgetRequest(BaseModel):
-    category: str
-    month: str = Field(pattern=MONTH_PATTERN)
-    planned_amount: float = Field(gt=0)
-
-
-class CategorySpend(BaseModel):
-    category: str
-    amount: float
-
-
-class MonthlyTotal(BaseModel):
-    month: str
-    amount: float
-
-
-class BudgetProgress(BaseModel):
-    category: str
-    planned_amount: float
-    actual_amount: float
+class TopCustomer(BaseModel):
+    customer_name: str
+    shipment_count: int
 
 
 class DashboardSummary(BaseModel):
     month: str
-    total_spent: float
-    category_breakdown: list[CategorySpend]
-    monthly_trend: list[MonthlyTotal]
-    budgets: list[BudgetProgress]
+    total_shipments: int
+    status_breakdown: list[StatusBreakdown]
+    monthly_trend: list[MonthlyShipmentCount]
+    top_customers: list[TopCustomer]
 
 
 class ExchangeRateOut(BaseModel):

@@ -13,6 +13,6 @@ cloudinary.config(
 )
 
 
-def upload_receipt_image(file_bytes: bytes) -> str:
-    result = cloudinary.uploader.upload(file_bytes, folder="snapledger/receipts")
+def upload_document_file(file_bytes: bytes) -> str:
+    result = cloudinary.uploader.upload(file_bytes, folder="snapledger/documents")
     return result["secure_url"]

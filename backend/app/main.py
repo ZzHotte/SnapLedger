@@ -2,11 +2,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routers import auth, budgets, dashboard, ledgers, market_data, receipts, transactions
+from app.routers import auth, carriers, customers, dashboard, documents, market_data, shipments, workspaces
 
 settings = get_settings()
 
-app = FastAPI(title="SnapLedger API")
+app = FastAPI(title="SnapLedger Freight CRM API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,10 +17,11 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
-app.include_router(ledgers.router)
-app.include_router(receipts.router)
-app.include_router(transactions.router)
-app.include_router(budgets.router)
+app.include_router(workspaces.router)
+app.include_router(customers.router)
+app.include_router(carriers.router)
+app.include_router(documents.router)
+app.include_router(shipments.router)
 app.include_router(dashboard.router)
 app.include_router(market_data.router)
 

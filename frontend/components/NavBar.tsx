@@ -3,11 +3,11 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
-import { useLedger } from "@/lib/ledger-context";
+import { useWorkspace } from "@/lib/workspace-context";
 
 export default function NavBar() {
   const { user, logout } = useAuth();
-  const { ledgers, currentLedger, selectLedger } = useLedger();
+  const { workspaces, currentWorkspace, selectWorkspace } = useWorkspace();
 
   if (!user) return null;
 
@@ -15,31 +15,39 @@ export default function NavBar() {
     <header className="flex items-center justify-between border-b border-gray-200 px-6 py-3">
       <Link href="/" className="flex items-center gap-2">
         <Image src="/logo.png" alt="SnapLedger" width={28} height={28} priority />
-        <span className="text-sm font-semibold">SnapLedger</span>
+        <span className="text-sm font-semibold">SnapLedger CRM</span>
       </Link>
 
       <div className="flex items-center gap-4">
-        {currentLedger && (
+        {currentWorkspace && (
           <select
-            value={currentLedger.id}
-            onChange={(e) => selectLedger(Number(e.target.value))}
+            value={currentWorkspace.id}
+            onChange={(e) => selectWorkspace(Number(e.target.value))}
             className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
-            aria-label="Switch ledger"
+            aria-label="Switch workspace"
           >
-            {ledgers.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-                {l.role !== "owner" ? ` (${l.role})` : ""}
+            {workspaces.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name}
+                {w.role !== "owner" ? ` (${w.role})` : ""}
               </option>
             ))}
           </select>
         )}
-        {currentLedger && (
+        {currentWorkspace && (
           <Link
             href="/dashboard"
             className="text-sm text-gray-500 underline-offset-2 hover:text-black hover:underline"
           >
             Dashboard
+          </Link>
+        )}
+        {currentWorkspace && (
+          <Link
+            href="/customers"
+            className="text-sm text-gray-500 underline-offset-2 hover:text-black hover:underline"
+          >
+            Customers
           </Link>
         )}
         <Link
@@ -48,12 +56,12 @@ export default function NavBar() {
         >
           Market Data
         </Link>
-        {currentLedger && (
+        {currentWorkspace && (
           <Link
-            href={`/ledgers/${currentLedger.id}/members`}
+            href={`/workspaces/${currentWorkspace.id}/members`}
             className="text-sm text-gray-500 underline-offset-2 hover:text-black hover:underline"
           >
-            Members
+            Team
           </Link>
         )}
         <span className="text-sm text-gray-500">{user.name || user.email}</span>

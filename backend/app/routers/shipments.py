@@ -1,0 +1,285 @@
+import random
+from datetime import date, timedelta
+from decimal import Decimal
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, insert, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from starlette.concurrency import run_in_threadpool
+
+from app.constants import DEFAULT_MOCK_COUNT, MAX_MOCK_COUNT, MOCK_CARGO, MOCK_PORTS
+from app.database import get_db
+from app.deps import get_current_user
+from app.models import Carrier, Customer, FreightMode, Quote, Shipment, ShipmentStatus, TrackingEvent, User
+from app.schemas import (
+    CreateQuoteRequest,
+    CreateTrackingEventRequest,
+    GenerateMockDataResponse,
+    QuoteOut,
+    ShipmentDetailOut,
+    ShipmentListOut,
+    ShipmentOut,
+    TrackingEventOut,
+    UpdateShipmentStatusRequest,
+)
+from app.workspaces import require_editor, require_owner, resolve_workspace_membership
+
+router = APIRouter(prefix="/shipments", tags=["shipments"])
+
+
+def _to_shipment_out(s: Shipment) -> ShipmentOut:
+    return ShipmentOut(
+        id=s.id,
+        customer_name=s.customer.name if s.customer else None,
+        carrier_name=s.carrier.name if s.carrier else None,
+        freight_mode=s.freight_mode.value,
+        origin_port=s.origin_port,
+        destination_port=s.destination_port,
+        cargo_description=s.cargo_description,
+        container_no=s.container_no,
+        weight_kg=float(s.weight_kg) if s.weight_kg is not None else None,
+        freight_cost=float(s.freight_cost) if s.freight_cost is not None else None,
+        currency=s.currency,
+        status=s.status.value,
+        shipment_date=s.shipment_date,
+        eta=s.eta,
+        document_file_url=s.document.file_url if s.document else None,
+        created_at=s.created_at,
+    )
+
+
+@router.get("", response_model=ShipmentListOut)
+async def list_shipments(
+    workspace_id: int | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # any active member (owner/editor/viewer) can read
+    workspace, _role = await resolve_workspace_membership(db, current_user, workspace_id)
+
+    total = await db.scalar(
+        select(func.count()).select_from(Shipment).where(Shipment.workspace_id == workspace.id)
+    )
+
+    result = await db.scalars(
+        select(Shipment)
+        .where(Shipment.workspace_id == workspace.id)
+        .options(
+            selectinload(Shipment.customer), selectinload(Shipment.carrier), selectinload(Shipment.document)
+        )
+        # id as a final tiebreaker keeps pagination stable even when many rows share
+        # the same shipment_date/created_at (e.g. bulk-generated mock data)
+        .order_by(Shipment.shipment_date.desc(), Shipment.created_at.desc(), Shipment.id.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    shipments = result.all()
+
+    return ShipmentListOut(items=[_to_shipment_out(s) for s in shipments], total=total)
+
+
+@router.get("/{shipment_id}", response_model=ShipmentDetailOut)
+async def get_shipment(
+    shipment_id: int,
+    workspace_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    workspace, _role = await resolve_workspace_membership(db, current_user, workspace_id)
+
+    shipment = await db.scalar(
+        select(Shipment)
+        .where(Shipment.id == shipment_id, Shipment.workspace_id == workspace.id)
+        .options(
+            selectinload(Shipment.customer),
+            selectinload(Shipment.carrier),
+            selectinload(Shipment.document),
+            selectinload(Shipment.quotes).selectinload(Quote.carrier),
+            selectinload(Shipment.tracking_events),
+        )
+    )
+    if shipment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shipment not found")
+
+    base = _to_shipment_out(shipment)
+    return ShipmentDetailOut(
+        **base.model_dump(),
+        quotes=[
+            QuoteOut(
+                id=q.id,
+                carrier_name=q.carrier.name,
+                amount=float(q.amount),
+                currency=q.currency,
+                valid_until=q.valid_until,
+                status=q.status.value,
+                created_at=q.created_at,
+            )
+            for q in sorted(shipment.quotes, key=lambda q: q.created_at)
+        ],
+        tracking_events=[
+            TrackingEventOut(
+                id=e.id, status=e.status.value, location=e.location, event_date=e.event_date, note=e.note
+            )
+            for e in sorted(shipment.tracking_events, key=lambda e: e.event_date)
+        ],
+    )
+
+
+@router.patch("/{shipment_id}/status", response_model=ShipmentOut)
+async def update_shipment_status(
+    shipment_id: int,
+    payload: UpdateShipmentStatusRequest,
+    workspace_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    workspace, role = await resolve_workspace_membership(db, current_user, workspace_id)
+    require_editor(role)
+
+    shipment = await db.scalar(
+        select(Shipment)
+        .where(Shipment.id == shipment_id, Shipment.workspace_id == workspace.id)
+        .options(selectinload(Shipment.customer), selectinload(Shipment.carrier), selectinload(Shipment.document))
+    )
+    if shipment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shipment not found")
+
+    shipment.status = ShipmentStatus(payload.status)
+    await db.commit()
+    await db.refresh(shipment, attribute_names=["customer", "carrier", "document"])
+
+    return _to_shipment_out(shipment)
+
+
+@router.post(
+    "/{shipment_id}/tracking-events", response_model=TrackingEventOut, status_code=status.HTTP_201_CREATED
+)
+async def add_tracking_event(
+    shipment_id: int,
+    payload: CreateTrackingEventRequest,
+    workspace_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    workspace, role = await resolve_workspace_membership(db, current_user, workspace_id)
+    require_editor(role)
+
+    shipment = await db.get(Shipment, shipment_id)
+    if shipment is None or shipment.workspace_id != workspace.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shipment not found")
+
+    event = TrackingEvent(
+        shipment_id=shipment.id,
+        status=ShipmentStatus(payload.status),
+        location=payload.location,
+        event_date=payload.event_date,
+        note=payload.note,
+    )
+    db.add(event)
+    # A new tracking event is treated as the shipment's latest known status.
+    shipment.status = event.status
+    await db.commit()
+    await db.refresh(event)
+
+    return TrackingEventOut(
+        id=event.id, status=event.status.value, location=event.location, event_date=event.event_date, note=event.note
+    )
+
+
+@router.post("/{shipment_id}/quotes", response_model=QuoteOut, status_code=status.HTTP_201_CREATED)
+async def add_quote(
+    shipment_id: int,
+    payload: CreateQuoteRequest,
+    workspace_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    workspace, role = await resolve_workspace_membership(db, current_user, workspace_id)
+    require_editor(role)
+
+    shipment = await db.get(Shipment, shipment_id)
+    if shipment is None or shipment.workspace_id != workspace.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shipment not found")
+
+    carrier = await db.get(Carrier, payload.carrier_id)
+    if carrier is None or carrier.workspace_id != workspace.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown carrier")
+
+    quote = Quote(
+        shipment_id=shipment.id,
+        carrier_id=carrier.id,
+        amount=payload.amount,
+        currency=payload.currency.upper(),
+        valid_until=payload.valid_until,
+    )
+    db.add(quote)
+    await db.commit()
+    await db.refresh(quote)
+
+    return QuoteOut(
+        id=quote.id,
+        carrier_name=carrier.name,
+        amount=float(quote.amount),
+        currency=quote.currency,
+        valid_until=quote.valid_until,
+        status=quote.status.value,
+        created_at=quote.created_at,
+    )
+
+
+@router.post("/mock-data", response_model=GenerateMockDataResponse, status_code=status.HTTP_201_CREATED)
+async def generate_mock_data(
+    workspace_id: int | None = None,
+    count: int = Query(default=DEFAULT_MOCK_COUNT, ge=1, le=MAX_MOCK_COUNT),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Bulk-inserts randomized shipments with no document attached, for testing
+    dashboard/list rendering at scale. Owner-only — this is a data-mutating dev
+    tool, not something editors/viewers on a shared workspace should be able to spam."""
+    workspace, role = await resolve_workspace_membership(db, current_user, workspace_id)
+    require_owner(role)
+
+    customer_ids = (await db.scalars(select(Customer.id).where(Customer.workspace_id == workspace.id))).all()
+    if not customer_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Workspace has no customers yet")
+
+    # Pure CPU-bound random-data generation — off the event loop so it doesn't
+    # stall every other request this worker is handling while it runs, same
+    # reasoning as documents.py's run_in_threadpool use for its blocking calls.
+    rows = await run_in_threadpool(_build_mock_rows, workspace.id, current_user.id, customer_ids, count)
+
+    await db.execute(insert(Shipment), rows)
+    await db.commit()
+
+    return GenerateMockDataResponse(created=count)
+
+
+def _build_mock_rows(workspace_id: int, user_id: int, customer_ids: list[int], count: int) -> list[dict]:
+    today = date.today()
+    modes = list(FreightMode)
+    statuses = list(ShipmentStatus)
+    return [
+        (
+            lambda origin, destination: {
+                "workspace_id": workspace_id,
+                "created_by": user_id,
+                "customer_id": random.choice(customer_ids),
+                "carrier_id": None,
+                "freight_mode": random.choice(modes),
+                "origin_port": origin,
+                "destination_port": destination,
+                "cargo_description": random.choice(MOCK_CARGO),
+                "weight_kg": Decimal(str(round(random.uniform(50, 20000), 2))),
+                "freight_cost": Decimal(str(round(random.uniform(200, 15000), 2))),
+                "currency": "USD",
+                "status": random.choice(statuses),
+                "shipment_date": today - timedelta(days=random.randint(0, 364)),
+                "document_id": None,
+            }
+        )(*random.choice(MOCK_PORTS))
+        for _ in range(count)
+    ]
