@@ -165,6 +165,8 @@ class Document(Base):
     extracted_port_of_discharge: Mapped[str | None] = mapped_column(String(255))
     extracted_cargo_description: Mapped[str | None] = mapped_column(String(500))
     extracted_weight_kg: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    extracted_freight_cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    extracted_currency: Mapped[str | None] = mapped_column(String(3))
     ocr_raw_json: Mapped[dict | None] = mapped_column(JSON)
     status: Mapped[DocumentStatus] = mapped_column(
         Enum(DocumentStatus, name="document_status"), default=DocumentStatus.pending

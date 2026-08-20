@@ -31,8 +31,14 @@ Return ONLY JSON (no markdown, no explanation) matching exactly this shape:
   "origin_port": string (port/place of loading) or null,
   "destination_port": string (port/place of discharge) or null,
   "cargo_description": string (short description of the goods) or null,
-  "weight_kg": number (total gross weight in kilograms) or null
+  "weight_kg": number (total gross weight in kilograms) or null,
+  "freight_cost": number (the freight/shipping charge, or total invoice value on a
+    commercial invoice — NOT the value of the goods on a packing list) or null,
+  "currency": 3-letter ISO currency code for freight_cost, your best guess if an
+    amount is present but no currency is stated, or null
 }}
+A bill of lading often only states "Freight: Prepaid" or "Collect" with no dollar
+amount — leave freight_cost null in that case rather than guessing.
 If a field can't be determined, use null for it. Still make your best guess for the others."""
 
 EMPTY_EXTRACTION = {
@@ -44,6 +50,8 @@ EMPTY_EXTRACTION = {
     "destination_port": None,
     "cargo_description": None,
     "weight_kg": None,
+    "freight_cost": None,
+    "currency": None,
 }
 
 

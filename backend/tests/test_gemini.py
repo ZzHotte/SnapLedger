@@ -20,6 +20,8 @@ def test_extract_document_fields_returns_full_extraction():
         "destination_port": "Los Angeles, US",
         "cargo_description": "Electronics components",
         "weight_kg": 1200.5,
+        "freight_cost": 3500.0,
+        "currency": "USD",
     }
     with patch("app.gemini._get_client", return_value=_fake_client(json.dumps(payload))):
         result, ok = extract_document_fields(b"fake-bytes", "image/png")

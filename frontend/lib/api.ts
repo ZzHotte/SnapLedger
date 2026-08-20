@@ -210,6 +210,8 @@ export interface Document {
   destination_port: string | null;
   cargo_description: string | null;
   weight_kg: number | null;
+  freight_cost: number | null;
+  currency: string | null;
   extraction_failed: boolean;
 }
 

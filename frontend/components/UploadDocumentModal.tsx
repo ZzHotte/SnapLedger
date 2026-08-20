@@ -67,6 +67,8 @@ export default function UploadDocumentModal({ onSaved }: { onSaved: () => void }
       setDestinationPort(result.destination_port ?? "");
       setCargoDescription(result.cargo_description ?? "");
       setWeightKg(result.weight_kg != null ? String(result.weight_kg) : "");
+      setFreightCost(result.freight_cost != null ? String(result.freight_cost) : "");
+      if (result.currency) setCurrency(result.currency.toUpperCase());
       setShipmentDate(new Date().toISOString().slice(0, 10));
       setStep("review");
     } catch (err) {

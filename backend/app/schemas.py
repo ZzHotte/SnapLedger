@@ -106,6 +106,8 @@ class DocumentOut(BaseModel):
     destination_port: str | None
     cargo_description: str | None
     weight_kg: float | None
+    freight_cost: float | None
+    currency: str | None
     extraction_failed: bool
 
 

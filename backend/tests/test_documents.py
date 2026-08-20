@@ -12,6 +12,8 @@ FAKE_EXTRACTION = {
     "destination_port": "Los Angeles, US",
     "cargo_description": "Electronics components",
     "weight_kg": 1200.5,
+    "freight_cost": 3500.0,
+    "currency": "USD",
 }
 
 
@@ -53,6 +55,8 @@ async def test_upload_document_extracts_and_returns_pending(client):
     assert body["bl_number"] == "BL123456"
     assert body["shipper"] == "Acme Shippers"
     assert body["weight_kg"] == 1200.5
+    assert body["freight_cost"] == 3500.0
+    assert body["currency"] == "USD"
     assert body["extraction_failed"] is False
 
 

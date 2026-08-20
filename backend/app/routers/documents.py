@@ -51,6 +51,8 @@ async def upload_document(
         extracted_port_of_discharge=extracted.get("destination_port"),
         extracted_cargo_description=extracted.get("cargo_description"),
         extracted_weight_kg=extracted.get("weight_kg"),
+        extracted_freight_cost=extracted.get("freight_cost"),
+        extracted_currency=extracted.get("currency"),
         ocr_raw_json=extracted,
         status=DocumentStatus.pending,
     )
@@ -70,6 +72,8 @@ async def upload_document(
         destination_port=document.extracted_port_of_discharge,
         cargo_description=document.extracted_cargo_description,
         weight_kg=float(document.extracted_weight_kg) if document.extracted_weight_kg is not None else None,
+        freight_cost=float(document.extracted_freight_cost) if document.extracted_freight_cost is not None else None,
+        currency=document.extracted_currency,
         extraction_failed=not extraction_ok,
     )
 
