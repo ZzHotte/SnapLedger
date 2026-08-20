@@ -1,9 +1,28 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspace } from "@/lib/workspace-context";
+
+function ContainerMark() {
+  return (
+    <svg
+      viewBox="0 0 28 28"
+      width={22}
+      height={22}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="2" y="6" width="24" height="16" rx="1.5" />
+      <path d="M8 6v16M14 6v16M20 6v16" />
+      <path d="M2 12h24M2 17h24" />
+    </svg>
+  );
+}
 
 export default function NavBar() {
   const { user, logout } = useAuth();
@@ -14,7 +33,7 @@ export default function NavBar() {
   return (
     <header className="flex items-center justify-between border-b border-gray-200 px-6 py-3">
       <Link href="/" className="flex items-center gap-2">
-        <Image src="/logo.png" alt="SnapLedger" width={28} height={28} priority />
+        <ContainerMark />
         <span className="text-sm font-semibold">SnapLedger CRM</span>
       </Link>
 
