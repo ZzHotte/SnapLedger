@@ -278,8 +278,33 @@ export interface ShipmentListResult {
   total: number;
 }
 
-export function fetchShipments(workspaceId: number, limit: number, offset: number) {
-  return request<ShipmentListResult>(`/shipments?workspace_id=${workspaceId}&limit=${limit}&offset=${offset}`);
+export type ShipmentSortBy = "shipment_date" | "customer" | "cost" | "status";
+export type SortDir = "asc" | "desc";
+
+export interface ShipmentListParams {
+  q?: string;
+  status?: string[];
+  sortBy?: ShipmentSortBy;
+  sortDir?: SortDir;
+}
+
+export function fetchShipments(
+  workspaceId: number,
+  limit: number,
+  offset: number,
+  params: ShipmentListParams = {}
+) {
+  const search = new URLSearchParams({
+    workspace_id: String(workspaceId),
+    limit: String(limit),
+    offset: String(offset),
+  });
+  if (params.q) search.set("q", params.q);
+  if (params.sortBy) search.set("sort_by", params.sortBy);
+  if (params.sortDir) search.set("sort_dir", params.sortDir);
+  for (const s of params.status ?? []) search.append("status", s);
+
+  return request<ShipmentListResult>(`/shipments?${search.toString()}`);
 }
 
 export function generateMockData(workspaceId: number, count: number) {

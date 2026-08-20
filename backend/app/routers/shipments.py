@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, insert, select
+from sqlalchemy import func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from starlette.concurrency import run_in_threadpool
@@ -50,30 +50,74 @@ def _to_shipment_out(s: Shipment) -> ShipmentOut:
     )
 
 
+SORT_COLUMNS = {
+    "shipment_date": Shipment.shipment_date,
+    "customer": Customer.name,
+    "cost": Shipment.freight_cost,
+    "status": Shipment.status,
+}
+
+
 @router.get("", response_model=ShipmentListOut)
 async def list_shipments(
     workspace_id: int | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    q: str | None = Query(default=None, max_length=255),
+    status_filter: list[str] | None = Query(default=None, alias="status"),
+    sort_by: str = Query(default="shipment_date", pattern="^(shipment_date|customer|cost|status)$"),
+    sort_dir: str = Query(default="desc", pattern="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     # any active member (owner/editor/viewer) can read
     workspace, _role = await resolve_workspace_membership(db, current_user, workspace_id)
 
-    total = await db.scalar(
-        select(func.count()).select_from(Shipment).where(Shipment.workspace_id == workspace.id)
-    )
+    statuses: list[ShipmentStatus] = []
+    if status_filter:
+        try:
+            statuses = [ShipmentStatus(s) for s in status_filter]
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid status value")
+
+    # Sorting/searching by customer name needs the join; other sort/search
+    # combinations don't, so skip it then — a plain WHERE workspace_id=? scan
+    # stays index-only instead of paying for a join every request.
+    needs_customer_join = bool(q) or sort_by == "customer"
+
+    def _scope(stmt):
+        stmt = stmt.where(Shipment.workspace_id == workspace.id)
+        if needs_customer_join:
+            stmt = stmt.outerjoin(Customer, Customer.id == Shipment.customer_id)
+        if statuses:
+            stmt = stmt.where(Shipment.status.in_(statuses))
+        if q:
+            pattern = f"%{q}%"
+            stmt = stmt.where(
+                or_(
+                    Customer.name.ilike(pattern),
+                    Shipment.origin_port.ilike(pattern),
+                    Shipment.destination_port.ilike(pattern),
+                    Shipment.cargo_description.ilike(pattern),
+                    Shipment.container_no.ilike(pattern),
+                )
+            )
+        return stmt
+
+    total = await db.scalar(_scope(select(func.count()).select_from(Shipment)))
+
+    sort_column = SORT_COLUMNS[sort_by]
+    order = sort_column.asc() if sort_dir == "asc" else sort_column.desc()
 
     result = await db.scalars(
-        select(Shipment)
-        .where(Shipment.workspace_id == workspace.id)
+        _scope(select(Shipment))
         .options(
             selectinload(Shipment.customer), selectinload(Shipment.carrier), selectinload(Shipment.document)
         )
-        # id as a final tiebreaker keeps pagination stable even when many rows share
-        # the same shipment_date/created_at (e.g. bulk-generated mock data)
-        .order_by(Shipment.shipment_date.desc(), Shipment.created_at.desc(), Shipment.id.desc())
+        # id as a final tiebreaker keeps pagination stable even when many rows
+        # share the same sort value (e.g. bulk-generated mock data all sorting
+        # equal on status, or nulls on cost)
+        .order_by(order, Shipment.id.desc())
         .limit(limit)
         .offset(offset)
     )

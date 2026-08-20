@@ -1,9 +1,19 @@
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from unittest.mock import patch
 
 from sqlalchemy import select
 
-from app.models import Customer, FreightMode, MemberStatus, Shipment, User, WorkspaceMember, WorkspaceRole
+from app.models import (
+    Customer,
+    FreightMode,
+    MemberStatus,
+    Shipment,
+    ShipmentStatus,
+    User,
+    WorkspaceMember,
+    WorkspaceRole,
+)
 
 
 async def _register(client, email) -> str:
@@ -107,6 +117,132 @@ async def test_list_shipments_respects_limit_param(client):
 async def test_list_shipments_rejects_limit_over_200(client):
     token = await _register(client, "owner4@example.com")
     resp = await client.get("/shipments?limit=500", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 422
+
+
+async def _seed_shipment(
+    client,
+    workspace_id,
+    user_id,
+    *,
+    customer_id=None,
+    status_=ShipmentStatus.inquiry,
+    freight_cost=None,
+    cargo_description=None,
+    origin_port=None,
+    destination_port=None,
+    container_no=None,
+    shipment_date_=date(2026, 1, 1),
+):
+    async with client.session_maker() as db:
+        shipment = Shipment(
+            workspace_id=workspace_id,
+            created_by=user_id,
+            customer_id=customer_id,
+            freight_mode=FreightMode.FCL,
+            currency="USD",
+            status=status_,
+            freight_cost=Decimal(str(freight_cost)) if freight_cost is not None else None,
+            cargo_description=cargo_description,
+            origin_port=origin_port,
+            destination_port=destination_port,
+            container_no=container_no,
+            shipment_date=shipment_date_,
+        )
+        db.add(shipment)
+        await db.commit()
+        await db.refresh(shipment)
+        return shipment.id
+
+
+async def test_list_shipments_search_matches_customer_name(client):
+    token = await _register(client, "search1@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    me = await client.get("/auth/me", headers=headers)
+    acme_id = await _seed_customer(client, workspace_id, "Acme Import Co.")
+    globex_id = await _seed_customer(client, workspace_id, "Globex Trading")
+    await _seed_shipment(client, workspace_id, me.json()["id"], customer_id=acme_id)
+    await _seed_shipment(client, workspace_id, me.json()["id"], customer_id=globex_id)
+
+    resp = await client.get("/shipments?q=acme", headers=headers)
+    body = resp.json()
+    assert body["total"] == 1
+    assert body["items"][0]["customer_name"] == "Acme Import Co."
+
+
+async def test_list_shipments_search_matches_cargo_and_ports(client):
+    token = await _register(client, "search2@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    me = await client.get("/auth/me", headers=headers)
+    await _seed_shipment(
+        client, workspace_id, me.json()["id"], cargo_description="Solar panels", origin_port="Qingdao, CN"
+    )
+    await _seed_shipment(
+        client, workspace_id, me.json()["id"], cargo_description="Machinery parts", origin_port="Yantian, CN"
+    )
+
+    resp = await client.get("/shipments?q=solar", headers=headers)
+    assert resp.json()["total"] == 1
+
+    resp = await client.get("/shipments?q=yantian", headers=headers)
+    assert resp.json()["total"] == 1
+
+
+async def test_list_shipments_filters_by_status(client):
+    token = await _register(client, "filter1@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    me = await client.get("/auth/me", headers=headers)
+    await _seed_shipment(client, workspace_id, me.json()["id"], status_=ShipmentStatus.booked)
+    await _seed_shipment(client, workspace_id, me.json()["id"], status_=ShipmentStatus.delivered)
+    await _seed_shipment(client, workspace_id, me.json()["id"], status_=ShipmentStatus.cancelled)
+
+    resp = await client.get("/shipments?status=booked&status=delivered", headers=headers)
+    body = resp.json()
+    assert body["total"] == 2
+    assert {item["status"] for item in body["items"]} == {"booked", "delivered"}
+
+
+async def test_list_shipments_rejects_invalid_status_filter(client):
+    token = await _register(client, "filter2@example.com")
+    resp = await client.get("/shipments?status=not-a-status", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 400
+
+
+async def test_list_shipments_sorts_by_cost_ascending(client):
+    token = await _register(client, "sort1@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    me = await client.get("/auth/me", headers=headers)
+    await _seed_shipment(client, workspace_id, me.json()["id"], freight_cost=500)
+    await _seed_shipment(client, workspace_id, me.json()["id"], freight_cost=100)
+    await _seed_shipment(client, workspace_id, me.json()["id"], freight_cost=300)
+
+    resp = await client.get("/shipments?sort_by=cost&sort_dir=asc", headers=headers)
+    costs = [item["freight_cost"] for item in resp.json()["items"]]
+    assert costs == [100, 300, 500]
+
+
+async def test_list_shipments_sorts_by_customer_name(client):
+    token = await _register(client, "sort2@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    me = await client.get("/auth/me", headers=headers)
+    z_id = await _seed_customer(client, workspace_id, "Zebra Logistics")
+    a_id = await _seed_customer(client, workspace_id, "Alpha Freight")
+    await _seed_shipment(client, workspace_id, me.json()["id"], customer_id=z_id)
+    await _seed_shipment(client, workspace_id, me.json()["id"], customer_id=a_id)
+
+    resp = await client.get("/shipments?sort_by=customer&sort_dir=asc", headers=headers)
+    names = [item["customer_name"] for item in resp.json()["items"]]
+    assert names == ["Alpha Freight", "Zebra Logistics"]
+
+
+async def test_list_shipments_rejects_invalid_sort_by(client):
+    token = await _register(client, "sort3@example.com")
+    resp = await client.get("/shipments?sort_by=not-a-column", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 422
 
 

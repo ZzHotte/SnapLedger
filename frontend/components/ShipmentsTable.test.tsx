@@ -58,7 +58,7 @@ describe("ShipmentsTable", () => {
     render(<ShipmentsTable refreshKey={0} />);
 
     await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
-    expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0);
+    expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, { q: undefined, status: undefined, sortBy: "shipment_date", sortDir: "desc" });
   });
 
   it("does not re-fetch the stale offset when refreshKey changes while on page > 0", async () => {
@@ -67,7 +67,7 @@ describe("ShipmentsTable", () => {
 
     fireEvent.click(screen.getByText("Next"));
     await waitFor(() => expect(screen.getByText("Page 2 of 3")).toBeInTheDocument());
-    expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 50);
+    expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 50, { q: undefined, status: undefined, sortBy: "shipment_date", sortDir: "desc" });
 
     fetchShipmentsMock.mockClear();
 
@@ -78,7 +78,7 @@ describe("ShipmentsTable", () => {
 
     await waitFor(() => expect(screen.getByText("Page 1 of 3")).toBeInTheDocument());
     expect(fetchShipmentsMock).toHaveBeenCalledTimes(1);
-    expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0);
+    expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, { q: undefined, status: undefined, sortBy: "shipment_date", sortDir: "desc" });
   });
 
   it("keeps the previous page's data on screen (not a blank loading state) while fetching the next page", async () => {
@@ -108,5 +108,87 @@ describe("ShipmentsTable", () => {
     resolveNextPage(pageOf(120, 50, 50));
     await waitFor(() => expect(screen.getByText("Customer 51")).toBeInTheDocument());
     expect(screen.queryByRole("status", { name: "Loading" })).not.toBeInTheDocument();
+  });
+
+  it("debounces the search box and sends it as the q param, resetting to page 0", async () => {
+    render(<ShipmentsTable refreshKey={0} />);
+    await waitFor(() => expect(screen.getByText("Page 1 of 3")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText("Next"));
+    await waitFor(() => expect(screen.getByText("Page 2 of 3")).toBeInTheDocument());
+    fetchShipmentsMock.mockClear();
+
+    fireEvent.change(screen.getByPlaceholderText("Search customer, port, cargo, container…"), {
+      target: { value: "acme" },
+    });
+
+    // debounced — no call yet immediately after typing
+    expect(fetchShipmentsMock).not.toHaveBeenCalled();
+
+    await waitFor(
+      () =>
+        expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, {
+          q: "acme",
+          status: undefined,
+          sortBy: "shipment_date",
+          sortDir: "desc",
+        }),
+      { timeout: 1000 }
+    );
+    expect(screen.getByText("Page 1 of 3")).toBeInTheDocument();
+  });
+
+  it("toggles a status chip on and off as the status filter param", async () => {
+    render(<ShipmentsTable refreshKey={0} />);
+    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+    fetchShipmentsMock.mockClear();
+
+    fireEvent.click(screen.getByText("booked"));
+    await waitFor(() =>
+      expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, {
+        q: undefined,
+        status: ["booked"],
+        sortBy: "shipment_date",
+        sortDir: "desc",
+      })
+    );
+
+    fetchShipmentsMock.mockClear();
+    fireEvent.click(screen.getByText("booked"));
+    await waitFor(() =>
+      expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, {
+        q: undefined,
+        status: undefined,
+        sortBy: "shipment_date",
+        sortDir: "desc",
+      })
+    );
+  });
+
+  it("sorts by a column on click and reverses direction on a second click", async () => {
+    render(<ShipmentsTable refreshKey={0} />);
+    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+    fetchShipmentsMock.mockClear();
+
+    fireEvent.click(screen.getByText("Freight cost"));
+    await waitFor(() =>
+      expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, {
+        q: undefined,
+        status: undefined,
+        sortBy: "cost",
+        sortDir: "asc",
+      })
+    );
+
+    fetchShipmentsMock.mockClear();
+    fireEvent.click(screen.getByText("Freight cost"));
+    await waitFor(() =>
+      expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, {
+        q: undefined,
+        status: undefined,
+        sortBy: "cost",
+        sortDir: "desc",
+      })
+    );
   });
 });
