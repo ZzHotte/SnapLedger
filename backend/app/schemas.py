@@ -274,12 +274,18 @@ class TopCustomer(BaseModel):
     amounts: list[MoneyAmount]
 
 
+class MonthlyStatusBreakdown(BaseModel):
+    month: str
+    status_breakdown: list[StatusBreakdown]
+
+
 class DashboardSummary(BaseModel):
     month: str
     total_shipments: int
     total_amounts: list[MoneyAmount]
     status_breakdown: list[StatusBreakdown]
     monthly_trend: list[MonthlyShipmentCount]
+    monthly_status_breakdown: list[MonthlyStatusBreakdown]
     top_customers: list[TopCustomer]
 
 

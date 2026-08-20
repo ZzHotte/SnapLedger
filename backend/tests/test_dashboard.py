@@ -169,6 +169,32 @@ async def test_dashboard_monthly_trend_excludes_cancelled(client):
     assert trend["2026-08"] == 1
 
 
+async def test_dashboard_monthly_status_breakdown_covers_every_trend_month(client):
+    token = await _register(client, "user3c@example.com")
+    workspace_id = await _workspace_id(client, token)
+    await _add_shipment(client, workspace_id, token, "2026-05-10", status=ShipmentStatus.delivered)
+    await _add_shipment(client, workspace_id, token, "2026-05-11", status=ShipmentStatus.cancelled)
+    await _add_shipment(client, workspace_id, token, "2026-08-01", status=ShipmentStatus.booked)
+
+    resp = await client.get(
+        f"/dashboard/summary?workspace_id={workspace_id}&month=2026-08", headers={"Authorization": f"Bearer {token}"}
+    )
+    body = resp.json()
+    by_month = {m["month"]: m for m in body["monthly_status_breakdown"]}
+
+    assert set(by_month.keys()) == {"2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08"}
+
+    may_breakdown = {s["status"]: s["count"] for s in by_month["2026-05"]["status_breakdown"]}
+    assert may_breakdown == {"delivered": 1, "cancelled": 1}
+
+    march_breakdown = by_month["2026-03"]["status_breakdown"]
+    assert march_breakdown == []
+
+    # the top-level status_breakdown (for `month`) is exactly the last trend
+    # month's entry — no drift between the two representations.
+    assert body["status_breakdown"] == by_month["2026-08"]["status_breakdown"]
+
+
 async def test_dashboard_top_customers_orders_by_count_and_groups_unassigned(client):
     token = await _register(client, "user4@example.com")
     workspace_id = await _workspace_id(client, token)

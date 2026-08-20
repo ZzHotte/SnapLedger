@@ -5,7 +5,14 @@ from sqlalchemy import extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Customer, Shipment, ShipmentStatus
-from app.schemas import DashboardSummary, MoneyAmount, MonthlyShipmentCount, StatusBreakdown, TopCustomer
+from app.schemas import (
+    DashboardSummary,
+    MoneyAmount,
+    MonthlyShipmentCount,
+    MonthlyStatusBreakdown,
+    StatusBreakdown,
+    TopCustomer,
+)
 
 TREND_MONTHS = 6
 
@@ -51,10 +58,11 @@ async def build_dashboard_summary(db: AsyncSession, workspace_id: int, month: st
 
     Cancelled shipments are excluded from monthly_trend/top_customers/the total —
     they didn't actually move any freight, so counting them overstates real
-    business activity. status_breakdown is the one exception: it deliberately
-    includes a "cancelled" row so cancellation volume stays visible somewhere.
-    Money is summed per currency rather than blended into one number, since
-    naively adding e.g. USD and EUR amounts together would be meaningless.
+    business activity. status_breakdown (and monthly_status_breakdown) are the
+    exception: they deliberately include a "cancelled" row so cancellation
+    volume stays visible somewhere. Money is summed per currency rather than
+    blended into one number, since naively adding e.g. USD and EUR amounts
+    together would be meaningless.
     """
     months = last_n_months(month)
     range_start, _ = month_bounds(months[0])
@@ -62,29 +70,43 @@ async def build_dashboard_summary(db: AsyncSession, workspace_id: int, month: st
 
     active = Shipment.status != ShipmentStatus.cancelled
 
-    # --- monthly trend (count + per-currency amounts), cancelled excluded ---
+    # --- one query covering the whole trend window, grouped by month × status ×
+    # currency. monthly_trend (cancelled excluded) and monthly_status_breakdown
+    # (cancelled included, one entry per trend month — this lets the frontend
+    # drill into any of the 6 trend months' status mix with zero extra
+    # requests) are both derived from it, and month's own status_breakdown /
+    # total is just that last bucket, so no separate query for either.
     bucket_expr = (extract("year", Shipment.shipment_date) * 100 + extract("month", Shipment.shipment_date)).label(
         "bucket"
     )
     trend_rows = (
         await db.execute(
-            select(bucket_expr, Shipment.currency, func.count(), func.sum(Shipment.freight_cost))
+            select(bucket_expr, Shipment.status, Shipment.currency, func.count(), func.sum(Shipment.freight_cost))
             .where(
                 Shipment.workspace_id == workspace_id,
                 Shipment.shipment_date >= range_start,
                 Shipment.shipment_date <= month_end,
-                active,
             )
-            .group_by(bucket_expr, Shipment.currency)
+            .group_by(bucket_expr, Shipment.status, Shipment.currency)
         )
     ).all()
 
     monthly_counts: dict[str, int] = {m: 0 for m in months}
     monthly_amounts: dict[str, dict[str, float]] = {}
-    for bucket, currency, count, total in trend_rows:
+    monthly_status_counts: dict[str, dict[str, int]] = {m: {} for m in months}
+    monthly_status_amounts: dict[str, dict[str, dict[str, float]]] = {m: {} for m in months}
+
+    for bucket, status_val, currency, count, total in trend_rows:
         bucket = int(bucket)
         key = f"{bucket // 100:04d}-{bucket % 100:02d}"
-        if key in monthly_counts:
+        if key not in monthly_counts:
+            continue
+
+        status_key = status_val.value
+        monthly_status_counts[key][status_key] = monthly_status_counts[key].get(status_key, 0) + count
+        _accumulate(monthly_status_amounts[key], status_key, currency, total)
+
+        if status_val != ShipmentStatus.cancelled:
             monthly_counts[key] += count
             _accumulate(monthly_amounts, key, currency, total)
 
@@ -95,34 +117,21 @@ async def build_dashboard_summary(db: AsyncSession, workspace_id: int, month: st
         for m in months
     ]
 
-    # --- status breakdown (count + amounts) — includes cancelled on purpose ---
-    status_rows = (
-        await db.execute(
-            select(Shipment.status, Shipment.currency, func.count(), func.sum(Shipment.freight_cost))
-            .where(
-                Shipment.workspace_id == workspace_id,
-                Shipment.shipment_date >= month_start,
-                Shipment.shipment_date <= month_end,
-            )
-            .group_by(Shipment.status, Shipment.currency)
+    def _status_breakdown_for(m: str) -> list[StatusBreakdown]:
+        return sorted(
+            (
+                StatusBreakdown(
+                    status=status_key, count=count, amounts=_amounts_from_totals(monthly_status_amounts[m].get(status_key, {}))
+                )
+                for status_key, count in monthly_status_counts[m].items()
+            ),
+            key=lambda s: s.count,
+            reverse=True,
         )
-    ).all()
 
-    status_counts: dict[str, int] = {}
-    status_amounts: dict[str, dict[str, float]] = {}
-    for status_val, currency, count, total in status_rows:
-        key = status_val.value
-        status_counts[key] = status_counts.get(key, 0) + count
-        _accumulate(status_amounts, key, currency, total)
-
-    status_breakdown = sorted(
-        (
-            StatusBreakdown(status=key, count=count, amounts=_amounts_from_totals(status_amounts.get(key, {})))
-            for key, count in status_counts.items()
-        ),
-        key=lambda s: s.count,
-        reverse=True,
-    )
+    monthly_status_breakdown = [MonthlyStatusBreakdown(month=m, status_breakdown=_status_breakdown_for(m)) for m in months]
+    # `month` is always the last entry in `months` (last_n_months ends at it).
+    status_breakdown = monthly_status_breakdown[-1].status_breakdown
 
     # --- top customers, cancelled excluded ---
     customer_name_expr = func.coalesce(Customer.name, "Unassigned")
@@ -159,8 +168,8 @@ async def build_dashboard_summary(db: AsyncSession, workspace_id: int, month: st
     )[:5]
 
     # --- total for the month, cancelled excluded — derived from status_breakdown
-    # rather than a fourth query, since status_breakdown already covers exactly
-    # this month's rows and just needs the cancelled entry left out.
+    # rather than a separate query, since it already covers exactly this
+    # month's rows and just needs the cancelled entry left out.
     total_shipments = sum(s.count for s in status_breakdown if s.status != ShipmentStatus.cancelled.value)
     total_amount_totals: dict[str, float] = {}
     for s in status_breakdown:
@@ -175,5 +184,6 @@ async def build_dashboard_summary(db: AsyncSession, workspace_id: int, month: st
         total_amounts=_amounts_from_totals(total_amount_totals),
         status_breakdown=status_breakdown,
         monthly_trend=monthly_trend,
+        monthly_status_breakdown=monthly_status_breakdown,
         top_customers=top_customers,
     )

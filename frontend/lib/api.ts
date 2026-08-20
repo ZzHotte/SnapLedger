@@ -421,12 +421,18 @@ export interface TopCustomer {
   amounts: MoneyAmount[];
 }
 
+export interface MonthlyStatusBreakdown {
+  month: string;
+  status_breakdown: StatusBreakdown[];
+}
+
 export interface DashboardSummary {
   month: string;
   total_shipments: number;
   total_amounts: MoneyAmount[];
   status_breakdown: StatusBreakdown[];
   monthly_trend: MonthlyShipmentCount[];
+  monthly_status_breakdown: MonthlyStatusBreakdown[];
   top_customers: TopCustomer[];
 }
 

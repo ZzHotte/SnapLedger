@@ -4,7 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspace } from "@/lib/workspace-context";
-import { ApiError, fetchDashboardSummary, type DashboardSummary, type MoneyAmount } from "@/lib/api";
+import {
+  ApiError,
+  fetchDashboardSummary,
+  type DashboardSummary,
+  type MoneyAmount,
+  type StatusBreakdown,
+} from "@/lib/api";
 
 type Metric = "count" | "value";
 
@@ -16,6 +22,11 @@ function currentMonth(): string {
 function monthLabel(month: string): string {
   const [y, m] = month.split("-").map(Number);
   return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "short" });
+}
+
+function monthLabelLong(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
 function statusLabel(status: string): string {
@@ -58,6 +69,9 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Drilled-into month from clicking a trend bar — null means "By status"
+  // shows the top-level (currently selected) month, same as before.
+  const [selectedTrendMonth, setSelectedTrendMonth] = useState<string | null>(null);
 
   async function load() {
     if (!currentWorkspace) return;
@@ -66,6 +80,7 @@ export default function DashboardPage() {
     try {
       const data = await fetchDashboardSummary(currentWorkspace.id, month);
       setSummary(data);
+      setSelectedTrendMonth(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load dashboard");
     } finally {
@@ -79,8 +94,21 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentWorkspace, month]);
 
+  function handleBarClick(clickedMonth: string) {
+    setSelectedTrendMonth((prev) => (prev === clickedMonth ? null : clickedMonth));
+  }
+
+  const activeStatusBreakdown: StatusBreakdown[] = useMemo(() => {
+    if (!summary) return [];
+    if (!selectedTrendMonth) return summary.status_breakdown;
+    return (
+      summary.monthly_status_breakdown.find((m) => m.month === selectedTrendMonth)?.status_breakdown ??
+      []
+    );
+  }, [summary, selectedTrendMonth]);
+
   const trend = useMemo(() => singleCurrency(summary?.monthly_trend ?? []), [summary]);
-  const statusCurrency = useMemo(() => singleCurrency(summary?.status_breakdown ?? []), [summary]);
+  const statusCurrency = useMemo(() => singleCurrency(activeStatusBreakdown), [activeStatusBreakdown]);
 
   const maxTrendValue = useMemo(() => {
     if (!summary) return 1;
@@ -92,13 +120,12 @@ export default function DashboardPage() {
   }, [summary, metric, trend.currency]);
 
   const maxStatusValue = useMemo(() => {
-    if (!summary) return 1;
     const values =
       metric === "count"
-        ? summary.status_breakdown.map((s) => s.count)
-        : summary.status_breakdown.map((s) => amountFor(s.amounts, statusCurrency.currency));
+        ? activeStatusBreakdown.map((s) => s.count)
+        : activeStatusBreakdown.map((s) => amountFor(s.amounts, statusCurrency.currency));
     return Math.max(1, ...values);
-  }, [summary, metric, statusCurrency.currency]);
+  }, [activeStatusBreakdown, metric, statusCurrency.currency]);
 
   if (authLoading) {
     return (
@@ -125,7 +152,13 @@ export default function DashboardPage() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 p-6">
+    // Clicking anywhere in the page that doesn't stop propagation (i.e.
+    // everywhere except the trend bars themselves) clears the drill-down —
+    // the "click blank space to reset" gesture.
+    <main
+      onClick={() => setSelectedTrendMonth(null)}
+      className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 p-6"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold">Dashboard</h1>
         <div className="flex items-center gap-3">
@@ -185,37 +218,76 @@ export default function DashboardPage() {
                 <div className="flex h-32 items-end gap-3">
                   {summary.monthly_trend.map((t) => {
                     const value = metric === "count" ? t.count : amountFor(t.amounts, trend.currency);
-                    const label =
-                      metric === "count" ? `${t.month}: ${value}` : `${t.month}: ${formatAmounts(t.amounts)}`;
+                    const tooltip =
+                      metric === "count" ? `${t.count} shipment${t.count === 1 ? "" : "s"}` : formatAmounts(t.amounts);
+                    const isSelected = selectedTrendMonth === t.month;
                     return (
-                      <div key={t.month} className="flex h-full flex-1 items-end">
+                      <div key={t.month} className="group relative flex h-full flex-1 items-end">
                         <div
-                          className="w-full rounded-t bg-black"
+                          role="button"
+                          tabIndex={0}
+                          aria-pressed={isSelected}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleBarClick(t.month);
+                          }}
+                          className={`w-full cursor-pointer rounded-t transition-colors ${
+                            isSelected
+                              ? "bg-blue-600"
+                              : selectedTrendMonth
+                                ? "bg-gray-300 hover:bg-gray-400"
+                                : "bg-black hover:bg-gray-700"
+                          }`}
                           style={{ height: `${(value / maxTrendValue) * 100}%` }}
-                          title={label}
                         />
+                        <div className="pointer-events-none absolute -top-8 left-1/2 z-10 -translate-x-1/2 rounded bg-gray-900 px-2 py-1 text-xs whitespace-nowrap text-white opacity-0 transition-opacity group-hover:opacity-100">
+                          {monthLabelLong(t.month)} · {tooltip}
+                        </div>
                       </div>
                     );
                   })}
                 </div>
                 <div className="mt-1 flex gap-3">
                   {summary.monthly_trend.map((t) => (
-                    <span key={t.month} className="flex-1 text-center text-xs text-gray-500">
+                    <span
+                      key={t.month}
+                      className={`flex-1 text-center text-xs ${
+                        selectedTrendMonth === t.month ? "font-medium text-blue-600" : "text-gray-500"
+                      }`}
+                    >
                       {monthLabel(t.month)}
                     </span>
                   ))}
                 </div>
+                <p className="mt-2 text-xs text-gray-400">Click a month to see its status breakdown below.</p>
               </>
             )}
           </section>
 
           <section>
-            <h2 className="mb-3 text-sm font-medium text-gray-700">By status</h2>
-            {summary.status_breakdown.length === 0 ? (
-              <p className="text-sm text-gray-500">No shipments this month.</p>
+            <div className="mb-3 flex items-center gap-2">
+              <h2 className="text-sm font-medium text-gray-700">By status</h2>
+              {selectedTrendMonth && (
+                <span className="flex items-center gap-1.5 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                  {monthLabelLong(selectedTrendMonth)}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedTrendMonth(null);
+                    }}
+                    aria-label="Clear month selection"
+                    className="hover:text-blue-900"
+                  >
+                    ✕
+                  </button>
+                </span>
+              )}
+            </div>
+            {activeStatusBreakdown.length === 0 ? (
+              <p className="text-sm text-gray-500">No shipments that month.</p>
             ) : metric === "value" && statusCurrency.mixed ? (
               <div className="space-y-1">
-                {summary.status_breakdown.map((s) => (
+                {activeStatusBreakdown.map((s) => (
                   <div key={s.status} className="flex items-center justify-between text-sm">
                     <span className="text-gray-600 capitalize">{statusLabel(s.status)}</span>
                     <span className="text-gray-500">{formatAmounts(s.amounts)}</span>
@@ -224,7 +296,7 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {summary.status_breakdown.map((s) => {
+                {activeStatusBreakdown.map((s) => {
                   const value = metric === "count" ? s.count : amountFor(s.amounts, statusCurrency.currency);
                   return (
                     <div key={s.status} className="flex items-center gap-3 text-sm">
