@@ -251,24 +251,33 @@ STATUS_LIST = [
 MONTH_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
 
 
+class MoneyAmount(BaseModel):
+    currency: str
+    amount: float
+
+
 class StatusBreakdown(BaseModel):
     status: str
     count: int
+    amounts: list[MoneyAmount]
 
 
 class MonthlyShipmentCount(BaseModel):
     month: str
     count: int
+    amounts: list[MoneyAmount]
 
 
 class TopCustomer(BaseModel):
     customer_name: str
     shipment_count: int
+    amounts: list[MoneyAmount]
 
 
 class DashboardSummary(BaseModel):
     month: str
     total_shipments: int
+    total_amounts: list[MoneyAmount]
     status_breakdown: list[StatusBreakdown]
     monthly_trend: list[MonthlyShipmentCount]
     top_customers: list[TopCustomer]

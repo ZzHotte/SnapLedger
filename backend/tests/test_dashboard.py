@@ -23,7 +23,16 @@ async def _add_customer(client, workspace_id, name) -> int:
         return customer.id
 
 
-async def _add_shipment(client, workspace_id, token, ship_date, status=ShipmentStatus.inquiry, customer_id=None):
+async def _add_shipment(
+    client,
+    workspace_id,
+    token,
+    ship_date,
+    status=ShipmentStatus.inquiry,
+    customer_id=None,
+    freight_cost=None,
+    currency="USD",
+):
     me = await client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
     user_id = me.json()["id"]
 
@@ -34,7 +43,8 @@ async def _add_shipment(client, workspace_id, token, ship_date, status=ShipmentS
                 created_by=user_id,
                 customer_id=customer_id,
                 freight_mode=FreightMode.FCL,
-                currency="USD",
+                currency=currency,
+                freight_cost=freight_cost,
                 status=status,
                 shipment_date=date.fromisoformat(ship_date),
             )
@@ -82,6 +92,49 @@ async def test_dashboard_aggregates_status_breakdown_and_total(client):
     assert body["status_breakdown"][0]["status"] == "booked"
 
 
+async def test_dashboard_excludes_cancelled_from_total_but_keeps_it_in_status_breakdown(client):
+    token = await _register(client, "user2b@example.com")
+    workspace_id = await _workspace_id(client, token)
+    await _add_shipment(client, workspace_id, token, "2026-08-05", status=ShipmentStatus.booked)
+    await _add_shipment(client, workspace_id, token, "2026-08-06", status=ShipmentStatus.cancelled)
+    await _add_shipment(client, workspace_id, token, "2026-08-07", status=ShipmentStatus.cancelled)
+
+    resp = await client.get(
+        f"/dashboard/summary?workspace_id={workspace_id}&month=2026-08", headers={"Authorization": f"Bearer {token}"}
+    )
+    body = resp.json()
+    assert body["total_shipments"] == 1
+
+    breakdown = {s["status"]: s["count"] for s in body["status_breakdown"]}
+    assert breakdown == {"booked": 1, "cancelled": 2}
+
+
+async def test_dashboard_amounts_grouped_by_currency(client):
+    token = await _register(client, "user2c@example.com")
+    workspace_id = await _workspace_id(client, token)
+    await _add_shipment(client, workspace_id, token, "2026-08-05", status=ShipmentStatus.booked, freight_cost=1000, currency="USD")
+    await _add_shipment(client, workspace_id, token, "2026-08-06", status=ShipmentStatus.booked, freight_cost=500, currency="USD")
+    await _add_shipment(client, workspace_id, token, "2026-08-07", status=ShipmentStatus.booked, freight_cost=200, currency="EUR")
+    # cancelled and with a cost — must not contribute to total_amounts
+    await _add_shipment(client, workspace_id, token, "2026-08-08", status=ShipmentStatus.cancelled, freight_cost=9999, currency="USD")
+
+    resp = await client.get(
+        f"/dashboard/summary?workspace_id={workspace_id}&month=2026-08", headers={"Authorization": f"Bearer {token}"}
+    )
+    body = resp.json()
+
+    total_amounts = {a["currency"]: a["amount"] for a in body["total_amounts"]}
+    assert total_amounts == {"USD": 1500.0, "EUR": 200.0}
+
+    booked = next(s for s in body["status_breakdown"] if s["status"] == "booked")
+    booked_amounts = {a["currency"]: a["amount"] for a in booked["amounts"]}
+    assert booked_amounts == {"USD": 1500.0, "EUR": 200.0}
+
+    cancelled = next(s for s in body["status_breakdown"] if s["status"] == "cancelled")
+    cancelled_amounts = {a["currency"]: a["amount"] for a in cancelled["amounts"]}
+    assert cancelled_amounts == {"USD": 9999.0}
+
+
 async def test_dashboard_monthly_trend_covers_six_months_including_older_shipments(client):
     token = await _register(client, "user3@example.com")
     workspace_id = await _workspace_id(client, token)
@@ -103,6 +156,19 @@ async def test_dashboard_monthly_trend_covers_six_months_including_older_shipmen
     }
 
 
+async def test_dashboard_monthly_trend_excludes_cancelled(client):
+    token = await _register(client, "user3b@example.com")
+    workspace_id = await _workspace_id(client, token)
+    await _add_shipment(client, workspace_id, token, "2026-08-01", status=ShipmentStatus.booked)
+    await _add_shipment(client, workspace_id, token, "2026-08-02", status=ShipmentStatus.cancelled)
+
+    resp = await client.get(
+        f"/dashboard/summary?workspace_id={workspace_id}&month=2026-08", headers={"Authorization": f"Bearer {token}"}
+    )
+    trend = {t["month"]: t["count"] for t in resp.json()["monthly_trend"]}
+    assert trend["2026-08"] == 1
+
+
 async def test_dashboard_top_customers_orders_by_count_and_groups_unassigned(client):
     token = await _register(client, "user4@example.com")
     workspace_id = await _workspace_id(client, token)
@@ -122,6 +188,21 @@ async def test_dashboard_top_customers_orders_by_count_and_groups_unassigned(cli
     counts = {c["customer_name"]: c["shipment_count"] for c in top_customers}
     assert counts == {"Big Shipper Co": 2, "Small Shipper Co": 1, "Unassigned": 1}
     assert top_customers[0]["customer_name"] == "Big Shipper Co"
+
+
+async def test_dashboard_top_customers_excludes_cancelled(client):
+    token = await _register(client, "user4b@example.com")
+    workspace_id = await _workspace_id(client, token)
+    customer_id = await _add_customer(client, workspace_id, "Acme Corp")
+
+    await _add_shipment(client, workspace_id, token, "2026-08-03", customer_id=customer_id, status=ShipmentStatus.booked)
+    await _add_shipment(client, workspace_id, token, "2026-08-04", customer_id=customer_id, status=ShipmentStatus.cancelled)
+
+    resp = await client.get(
+        f"/dashboard/summary?workspace_id={workspace_id}&month=2026-08", headers={"Authorization": f"Bearer {token}"}
+    )
+    top_customers = {c["customer_name"]: c["shipment_count"] for c in resp.json()["top_customers"]}
+    assert top_customers == {"Acme Corp": 1}
 
 
 async def test_dashboard_404_for_workspace_caller_is_not_a_member_of(client):

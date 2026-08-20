@@ -398,24 +398,33 @@ export function addQuote(
   });
 }
 
+export interface MoneyAmount {
+  currency: string;
+  amount: number;
+}
+
 export interface StatusBreakdown {
   status: string;
   count: number;
+  amounts: MoneyAmount[];
 }
 
 export interface MonthlyShipmentCount {
   month: string;
   count: number;
+  amounts: MoneyAmount[];
 }
 
 export interface TopCustomer {
   customer_name: string;
   shipment_count: number;
+  amounts: MoneyAmount[];
 }
 
 export interface DashboardSummary {
   month: string;
   total_shipments: number;
+  total_amounts: MoneyAmount[];
   status_breakdown: StatusBreakdown[];
   monthly_trend: MonthlyShipmentCount[];
   top_customers: TopCustomer[];
