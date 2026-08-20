@@ -5,6 +5,7 @@ import Image from "next/image";
 import {
   ApiError,
   confirmDocument,
+  createShipment,
   fetchCarriers,
   fetchCustomers,
   uploadDocument,
@@ -74,27 +75,34 @@ export default function UploadDocumentModal({ onSaved }: { onSaved: () => void }
     }
   }
 
+  function handleSkip() {
+    setDoc(null);
+    setShipmentDate(new Date().toISOString().slice(0, 10));
+    setStep("review");
+  }
+
   async function handleConfirm() {
-    if (!doc || !currentWorkspace || !customerId) return;
+    if (!currentWorkspace || !customerId) return;
     setError(null);
     setStep("saving");
+    const payload = {
+      customer_id: Number(customerId),
+      carrier_id: carrierId ? Number(carrierId) : null,
+      freight_mode: freightMode,
+      origin_port: originPort || null,
+      destination_port: destinationPort || null,
+      cargo_description: cargoDescription || null,
+      weight_kg: weightKg ? parseFloat(weightKg) : null,
+      freight_cost: freightCost ? parseFloat(freightCost) : null,
+      currency: currency.toUpperCase(),
+      shipment_date: shipmentDate,
+    };
     try {
-      await confirmDocument(
-        doc.id,
-        {
-          customer_id: Number(customerId),
-          carrier_id: carrierId ? Number(carrierId) : null,
-          freight_mode: freightMode,
-          origin_port: originPort || null,
-          destination_port: destinationPort || null,
-          cargo_description: cargoDescription || null,
-          weight_kg: weightKg ? parseFloat(weightKg) : null,
-          freight_cost: freightCost ? parseFloat(freightCost) : null,
-          currency: currency.toUpperCase(),
-          shipment_date: shipmentDate,
-        },
-        currentWorkspace.id
-      );
+      if (doc) {
+        await confirmDocument(doc.id, payload, currentWorkspace.id);
+      } else {
+        await createShipment(payload, currentWorkspace.id);
+      }
       closeModal();
       onSaved();
     } catch (err) {
@@ -155,6 +163,12 @@ export default function UploadDocumentModal({ onSaved }: { onSaved: () => void }
                   />
                 </label>
                 {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+                <button
+                  onClick={handleSkip}
+                  className="mt-3 w-full text-center text-sm text-gray-500 underline-offset-2 hover:text-black hover:underline"
+                >
+                  No document on hand — enter shipment details manually
+                </button>
               </div>
             )}
 
@@ -162,25 +176,28 @@ export default function UploadDocumentModal({ onSaved }: { onSaved: () => void }
               <p className="py-8 text-center text-sm text-gray-500">Reading document…</p>
             )}
 
-            {(step === "review" || step === "saving") && doc && (
+            {(step === "review" || step === "saving") && (
               <div className="space-y-4">
-                {isImage ? (
-                  <div className="relative h-48 w-full overflow-hidden rounded-md border border-gray-200">
-                    <Image src={doc.file_url} alt="Shipping document" fill className="object-contain" />
-                  </div>
-                ) : (
-                  <a
-                    href={doc.file_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
-                  >
-                    View uploaded PDF
-                  </a>
-                )}
+                {doc &&
+                  (isImage ? (
+                    <div className="relative h-48 w-full overflow-hidden rounded-md border border-gray-200">
+                      <Image src={doc.file_url} alt="Shipping document" fill className="object-contain" />
+                    </div>
+                  ) : (
+                    <a
+                      href={doc.file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                    >
+                      View uploaded PDF
+                    </a>
+                  ))}
 
                 <p className="text-xs text-gray-500">
-                  Double check these against the document above before saving.
+                  {doc
+                    ? "Double check these against the document above before saving."
+                    : "Fill in the shipment details below — no source document attached."}
                 </p>
 
                 <div className="grid grid-cols-2 gap-3">

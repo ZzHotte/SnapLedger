@@ -212,7 +212,7 @@ export interface Document {
   weight_kg: number | null;
 }
 
-export interface ConfirmDocumentPayload {
+export interface ShipmentInput {
   customer_id: number;
   carrier_id?: number | null;
   freight_mode: string;
@@ -227,6 +227,8 @@ export interface ConfirmDocumentPayload {
   eta?: string | null;
   note?: string | null;
 }
+
+export type ConfirmDocumentPayload = ShipmentInput;
 
 export interface Shipment {
   id: number;
@@ -256,6 +258,13 @@ export function uploadDocument(file: File, workspaceId: number) {
 
 export function confirmDocument(documentId: number, payload: ConfirmDocumentPayload, workspaceId: number) {
   return request<Shipment>(`/documents/${documentId}/confirm?workspace_id=${workspaceId}`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function createShipment(payload: ShipmentInput, workspaceId: number) {
+  return request<Shipment>(`/shipments?workspace_id=${workspaceId}`, {
     method: "POST",
     body: JSON.stringify(payload),
   });

@@ -110,6 +110,55 @@ async def test_list_shipments_rejects_limit_over_200(client):
     assert resp.status_code == 422
 
 
+async def test_create_shipment_without_a_document(client):
+    token = await _register(client, "manual-owner@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    customer_id = await _seed_customer(client, workspace_id)
+
+    resp = await client.post(
+        "/shipments",
+        headers=headers,
+        json={
+            "customer_id": customer_id,
+            "freight_mode": "LCL",
+            "origin_port": "Manual Entry Port",
+            "destination_port": "Manual Destination",
+            "cargo_description": "Phone-booked shipment, no paperwork yet",
+            "currency": "USD",
+            "shipment_date": "2026-08-20",
+        },
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["customer_name"] == "Acme Corp"
+    assert body["document_file_url"] is None
+    assert body["status"] == "inquiry"
+
+    async with client.session_maker() as db:
+        shipment = await db.get(Shipment, body["id"])
+    assert shipment.document_id is None
+
+
+async def test_viewer_cannot_create_shipment(client):
+    owner_token = await _register(client, "manual-owner2@example.com")
+    workspace_id = await _workspace_id(client, owner_token)
+    customer_id = await _seed_customer(client, workspace_id)
+    viewer_token = await _add_member(client, workspace_id, "manual-viewer2@example.com", WorkspaceRole.viewer)
+
+    resp = await client.post(
+        f"/shipments?workspace_id={workspace_id}",
+        headers={"Authorization": f"Bearer {viewer_token}"},
+        json={
+            "customer_id": customer_id,
+            "freight_mode": "LCL",
+            "currency": "USD",
+            "shipment_date": "2026-08-20",
+        },
+    )
+    assert resp.status_code == 403
+
+
 async def test_owner_can_generate_mock_data(client):
     token = await _register(client, "owner5@example.com")
     headers = {"Authorization": f"Bearer {token}"}

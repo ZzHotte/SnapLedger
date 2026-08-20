@@ -108,7 +108,7 @@ class DocumentOut(BaseModel):
     weight_kg: float | None
 
 
-class ConfirmDocumentRequest(BaseModel):
+class ShipmentInput(BaseModel):
     customer_id: int
     carrier_id: int | None = None
     freight_mode: str = Field(pattern="^(FCL|LCL|AIR|RAIL|ROAD)$")
@@ -122,6 +122,14 @@ class ConfirmDocumentRequest(BaseModel):
     shipment_date: date
     eta: date | None = None
     note: str | None = Field(default=None, max_length=500)
+
+
+class ConfirmDocumentRequest(ShipmentInput):
+    pass
+
+
+class CreateShipmentRequest(ShipmentInput):
+    pass
 
 
 class ShipmentOut(BaseModel):

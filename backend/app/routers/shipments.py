@@ -14,6 +14,7 @@ from app.deps import get_current_user
 from app.models import Carrier, Customer, FreightMode, Quote, Shipment, ShipmentStatus, TrackingEvent, User
 from app.schemas import (
     CreateQuoteRequest,
+    CreateShipmentRequest,
     CreateTrackingEventRequest,
     GenerateMockDataResponse,
     QuoteOut,
@@ -79,6 +80,63 @@ async def list_shipments(
     shipments = result.all()
 
     return ShipmentListOut(items=[_to_shipment_out(s) for s in shipments], total=total)
+
+
+@router.post("", response_model=ShipmentOut, status_code=status.HTTP_201_CREATED)
+async def create_shipment(
+    payload: CreateShipmentRequest,
+    workspace_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Creates a shipment with no source document — the manual-entry path for
+    when there's nothing to scan (e.g. a booking taken over the phone)."""
+    workspace, role = await resolve_workspace_membership(db, current_user, workspace_id)
+    require_editor(role)
+
+    shipment = Shipment(
+        workspace_id=workspace.id,
+        created_by=current_user.id,
+        customer_id=payload.customer_id,
+        carrier_id=payload.carrier_id,
+        freight_mode=FreightMode(payload.freight_mode),
+        origin_port=payload.origin_port,
+        destination_port=payload.destination_port,
+        cargo_description=payload.cargo_description,
+        container_no=payload.container_no,
+        weight_kg=payload.weight_kg,
+        freight_cost=payload.freight_cost,
+        currency=payload.currency.upper(),
+        shipment_date=payload.shipment_date,
+        eta=payload.eta,
+        note=payload.note,
+        document_id=None,
+    )
+    db.add(shipment)
+    await db.commit()
+    await db.refresh(shipment)
+
+    customer = await db.get(Customer, shipment.customer_id)
+    carrier = await db.get(Carrier, shipment.carrier_id) if shipment.carrier_id else None
+
+    return ShipmentOut(
+        id=shipment.id,
+        customer_name=customer.name if customer else None,
+        carrier_name=carrier.name if carrier else None,
+        freight_mode=shipment.freight_mode.value,
+        origin_port=shipment.origin_port,
+        destination_port=shipment.destination_port,
+        cargo_description=shipment.cargo_description,
+        container_no=shipment.container_no,
+        weight_kg=float(shipment.weight_kg) if shipment.weight_kg is not None else None,
+        freight_cost=float(shipment.freight_cost) if shipment.freight_cost is not None else None,
+        currency=shipment.currency,
+        status=shipment.status.value,
+        shipment_date=shipment.shipment_date,
+        eta=shipment.eta,
+        document_file_url=None,
+        created_at=shipment.created_at,
+    )
 
 
 @router.get("/{shipment_id}", response_model=ShipmentDetailOut)
