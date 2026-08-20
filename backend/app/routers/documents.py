@@ -37,7 +37,7 @@ async def upload_document(
     # SDK, google-genai sync client) — run them off the event loop so one slow upload
     # doesn't stall every other request this worker is handling.
     file_url = await run_in_threadpool(upload_document_file, contents)
-    extracted = await run_in_threadpool(extract_document_fields, contents, file.content_type)
+    extracted, extraction_ok = await run_in_threadpool(extract_document_fields, contents, file.content_type)
 
     document = Document(
         workspace_id=workspace.id,
@@ -70,6 +70,7 @@ async def upload_document(
         destination_port=document.extracted_port_of_discharge,
         cargo_description=document.extracted_cargo_description,
         weight_kg=float(document.extracted_weight_kg) if document.extracted_weight_kg is not None else None,
+        extraction_failed=not extraction_ok,
     )
 
 

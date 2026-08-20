@@ -106,6 +106,7 @@ class DocumentOut(BaseModel):
     destination_port: str | None
     cargo_description: str | None
     weight_kg: float | None
+    extraction_failed: bool
 
 
 class ShipmentInput(BaseModel):

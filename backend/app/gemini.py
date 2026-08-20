@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 
 from google import genai
 from google.genai import types
@@ -46,18 +47,35 @@ EMPTY_EXTRACTION = {
 }
 
 
-def extract_document_fields(file_bytes: bytes, mime_type: str) -> dict:
-    try:
-        response = _get_client().models.generate_content(
-            model="gemini-flash-latest",
-            contents=[
-                types.Part.from_bytes(data=file_bytes, mime_type=mime_type),
-                EXTRACTION_PROMPT,
-            ],
-            config=types.GenerateContentConfig(response_mime_type="application/json"),
-        )
-        data = json.loads(response.text)
-        return {**EMPTY_EXTRACTION, **data}
-    except Exception:
-        logger.exception("Gemini document extraction failed")
-        return dict(EMPTY_EXTRACTION)
+# Gemini's 503 "model overloaded" response explicitly says to retry — a couple
+# of quick attempts clears most of these transient blips without the caller
+# (or the user staring at a blank review form) ever noticing.
+EXTRACTION_RETRIES = 3
+RETRY_DELAY_SECONDS = 1.5
+
+
+def extract_document_fields(file_bytes: bytes, mime_type: str) -> tuple[dict, bool]:
+    """Returns (extracted_fields, ok). `ok` is False when every attempt failed —
+    the caller still gets EMPTY_EXTRACTION back so upload never hard-fails, but
+    can use `ok` to tell the user AI extraction didn't run rather than silently
+    presenting an all-blank form as if nothing was found in the image."""
+    last_error: Exception | None = None
+    for attempt in range(EXTRACTION_RETRIES):
+        try:
+            response = _get_client().models.generate_content(
+                model="gemini-flash-latest",
+                contents=[
+                    types.Part.from_bytes(data=file_bytes, mime_type=mime_type),
+                    EXTRACTION_PROMPT,
+                ],
+                config=types.GenerateContentConfig(response_mime_type="application/json"),
+            )
+            data = json.loads(response.text)
+            return {**EMPTY_EXTRACTION, **data}, True
+        except Exception as exc:  # noqa: BLE001 — deliberately broad, see docstring
+            last_error = exc
+            if attempt < EXTRACTION_RETRIES - 1:
+                time.sleep(RETRY_DELAY_SECONDS)
+
+    logger.exception("Gemini document extraction failed after %d attempts", EXTRACTION_RETRIES, exc_info=last_error)
+    return dict(EMPTY_EXTRACTION), False

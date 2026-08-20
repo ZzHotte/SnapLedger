@@ -194,6 +194,14 @@ export default function UploadDocumentModal({ onSaved }: { onSaved: () => void }
                     </a>
                   ))}
 
+                {doc?.extraction_failed && (
+                  <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    AI extraction didn&apos;t come back for this document (the model may be temporarily
+                    overloaded) — the fields below are blank, not empty on purpose. Fill them in manually,
+                    or close this and try uploading again.
+                  </p>
+                )}
+
                 <p className="text-xs text-gray-500">
                   {doc
                     ? "Double check these against the document above before saving."
@@ -215,6 +223,12 @@ export default function UploadDocumentModal({ onSaved }: { onSaved: () => void }
                         </option>
                       ))}
                     </select>
+                    {doc?.consignee && (
+                      <p className="mt-1 text-xs text-gray-400">
+                        Document lists consignee &quot;{doc.consignee}&quot; — pick the matching customer
+                        above, or add it on the Customers page first if it&apos;s not listed yet.
+                      </p>
+                    )}
                   </label>
                   <label className="col-span-2 text-sm">
                     Carrier (optional)

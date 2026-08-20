@@ -1,5 +1,7 @@
 from unittest.mock import patch
 
+from app.gemini import EMPTY_EXTRACTION
+
 FAKE_IMAGE_URL = "https://res.cloudinary.com/demo/image/upload/fake.png"
 FAKE_EXTRACTION = {
     "doc_type": "bill_of_lading",
@@ -24,7 +26,7 @@ async def _register(client) -> str:
 def _mocks():
     return (
         patch("app.routers.documents.upload_document_file", return_value=FAKE_IMAGE_URL),
-        patch("app.routers.documents.extract_document_fields", return_value=dict(FAKE_EXTRACTION)),
+        patch("app.routers.documents.extract_document_fields", return_value=(dict(FAKE_EXTRACTION), True)),
     )
 
 
@@ -51,6 +53,25 @@ async def test_upload_document_extracts_and_returns_pending(client):
     assert body["bl_number"] == "BL123456"
     assert body["shipper"] == "Acme Shippers"
     assert body["weight_kg"] == 1200.5
+    assert body["extraction_failed"] is False
+
+
+async def test_upload_surfaces_extraction_failure_without_failing_the_upload(client):
+    token = await _register(client)
+    with (
+        patch("app.routers.documents.upload_document_file", return_value=FAKE_IMAGE_URL),
+        patch("app.routers.documents.extract_document_fields", return_value=(dict(EMPTY_EXTRACTION), False)),
+    ):
+        resp = await client.post(
+            "/documents/upload",
+            headers={"Authorization": f"Bearer {token}"},
+            files={"file": ("document.png", b"fake-image-bytes", "image/png")},
+        )
+
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["extraction_failed"] is True
+    assert body["bl_number"] is None
 
 
 async def test_upload_rejects_non_image(client):

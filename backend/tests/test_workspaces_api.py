@@ -21,7 +21,7 @@ FAKE_EXTRACTION = {
 def _mocks():
     return (
         patch("app.routers.documents.upload_document_file", return_value=FAKE_IMAGE_URL),
-        patch("app.routers.documents.extract_document_fields", return_value=dict(FAKE_EXTRACTION)),
+        patch("app.routers.documents.extract_document_fields", return_value=(dict(FAKE_EXTRACTION), True)),
     )
 
 

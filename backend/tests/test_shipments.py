@@ -230,16 +230,19 @@ async def _create_shipment(client, headers, workspace_id) -> int:
         patch("app.routers.documents.upload_document_file", return_value="https://example.com/doc.png"),
         patch(
             "app.routers.documents.extract_document_fields",
-            return_value={
-                "doc_type": None,
-                "bl_number": None,
-                "shipper": None,
-                "consignee": None,
-                "origin_port": None,
-                "destination_port": None,
-                "cargo_description": None,
-                "weight_kg": None,
-            },
+            return_value=(
+                {
+                    "doc_type": None,
+                    "bl_number": None,
+                    "shipper": None,
+                    "consignee": None,
+                    "origin_port": None,
+                    "destination_port": None,
+                    "cargo_description": None,
+                    "weight_kg": None,
+                },
+                True,
+            ),
         ),
     ):
         upload_resp = await client.post(

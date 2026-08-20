@@ -210,6 +210,7 @@ export interface Document {
   destination_port: string | null;
   cargo_description: string | null;
   weight_kg: number | null;
+  extraction_failed: boolean;
 }
 
 export interface ShipmentInput {
