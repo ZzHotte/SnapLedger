@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ApiError,
+  deleteShipment,
   fetchShipments,
+  updateShipmentStatus,
   type Shipment,
   type ShipmentSortBy,
   type SortDir,
@@ -42,6 +44,33 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function StatusSelect({
+  status,
+  disabled,
+  onChange,
+}: {
+  status: string;
+  disabled: boolean;
+  onChange: (next: string) => void;
+}) {
+  return (
+    <select
+      value={status}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+      className={`rounded-full border-0 px-2 py-0.5 text-xs font-medium capitalize disabled:opacity-50 ${
+        STATUS_STYLES[status] ?? "bg-gray-100 text-gray-700"
+      }`}
+    >
+      {SHIPMENT_STATUSES.map((s) => (
+        <option key={s} value={s}>
+          {statusLabel(s)}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 interface SortHeaderProps {
   label: string;
   column: ShipmentSortBy;
@@ -68,12 +97,21 @@ function SortHeader({ label, column, sortBy, sortDir, onSort, align = "left" }: 
 
 export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
   const { currentWorkspace } = useWorkspace();
+  const canEdit = currentWorkspace?.role !== "viewer";
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [everLoaded, setEverLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
+  // Bumped after a row-level status change or delete to force a refetch
+  // without resetting the current page (unlike search/filter/sort changes,
+  // which should jump back to page 0 — see resetKey below).
+  const [localRefresh, setLocalRefresh] = useState(0);
+
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -112,6 +150,7 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
   if (resetKey !== prevResetKey) {
     setPrevResetKey(resetKey);
     setPage(0);
+    setSelectedIds(new Set());
   }
 
   useEffect(() => {
@@ -145,7 +184,62 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
     return () => {
       cancelled = true;
     };
-  }, [refreshKey, currentWorkspace, page, debouncedSearch, statusFilter, sortBy, sortDir]);
+  }, [refreshKey, currentWorkspace, page, debouncedSearch, statusFilter, sortBy, sortDir, localRefresh]);
+
+  async function handleRowStatusChange(shipmentId: number, nextStatus: string) {
+    if (!currentWorkspace) return;
+    setBusyId(shipmentId);
+    setRowError(null);
+    try {
+      await updateShipmentStatus(shipmentId, nextStatus, currentWorkspace.id);
+      setLocalRefresh((n) => n + 1);
+    } catch (err) {
+      setRowError(err instanceof ApiError ? err.message : "Failed to update status");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleDelete(shipmentId: number) {
+    if (!currentWorkspace) return;
+    if (!window.confirm("Delete this shipment? This can't be undone.")) return;
+    setBusyId(shipmentId);
+    setRowError(null);
+    try {
+      await deleteShipment(shipmentId, currentWorkspace.id);
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(shipmentId);
+        return next;
+      });
+      setLocalRefresh((n) => n + 1);
+    } catch (err) {
+      setRowError(err instanceof ApiError ? err.message : "Failed to delete shipment");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  function toggleRow(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const pageIds = shipments.map((s) => s.id);
+  const allOnPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
+
+  function toggleAllOnPage() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allOnPageSelected) pageIds.forEach((id) => next.delete(id));
+      else pageIds.forEach((id) => next.add(id));
+      return next;
+    });
+  }
 
   const hasFilters = debouncedSearch !== "" || statusFilter.length > 0;
 
@@ -198,6 +292,17 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
         </div>
       </div>
 
+      {selectedIds.size > 0 && (
+        <div className="mb-2 flex items-center gap-3 rounded-md bg-gray-50 px-3 py-1.5 text-sm text-gray-600">
+          <span>{selectedIds.size} selected</span>
+          <button onClick={() => setSelectedIds(new Set())} className="underline-offset-2 hover:underline">
+            Clear selection
+          </button>
+        </div>
+      )}
+
+      {rowError && <p className="mb-2 text-sm text-red-600">{rowError}</p>}
+
       {everLoaded && total === 0 && !loading && hasFilters ? (
         <p className="text-sm text-gray-500">No shipments match your search/filters.</p>
       ) : (
@@ -216,9 +321,19 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
             <div
               className={`w-full overflow-x-auto transition-opacity ${loading ? "pointer-events-none opacity-50" : ""}`}
             >
-              <table className="w-full min-w-[700px] text-left text-sm">
+              <table className="w-full min-w-[760px] text-left text-sm">
                 <thead>
                   <tr className="border-b border-gray-200 text-gray-500">
+                    {canEdit && (
+                      <th className="py-2 pr-2 font-medium">
+                        <input
+                          type="checkbox"
+                          checked={allOnPageSelected}
+                          onChange={toggleAllOnPage}
+                          aria-label="Select all on page"
+                        />
+                      </th>
+                    )}
                     <SortHeader label="Date" column="shipment_date" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
                     <SortHeader label="Customer" column="customer" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
                     <th className="py-2 pr-4 font-medium">Route</th>
@@ -232,11 +347,22 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
                       onSort={handleSort}
                       align="right"
                     />
+                    {canEdit && <th className="py-2 pl-4 font-medium" />}
                   </tr>
                 </thead>
                 <tbody>
                   {shipments.map((s) => (
                     <tr key={s.id} className="border-b border-gray-100">
+                      {canEdit && (
+                        <td className="py-2 pr-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(s.id)}
+                            onChange={() => toggleRow(s.id)}
+                            aria-label={`Select shipment ${s.id}`}
+                          />
+                        </td>
+                      )}
                       <td className="py-2 pr-4 whitespace-nowrap">
                         <Link href={`/shipments/${s.id}`} className="hover:underline">
                           {s.shipment_date}
@@ -248,11 +374,31 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
                       </td>
                       <td className="py-2 pr-4">{s.freight_mode}</td>
                       <td className="py-2 pr-4">
-                        <StatusBadge status={s.status} />
+                        {canEdit ? (
+                          <StatusSelect
+                            status={s.status}
+                            disabled={busyId === s.id}
+                            onChange={(next) => handleRowStatusChange(s.id, next)}
+                          />
+                        ) : (
+                          <StatusBadge status={s.status} />
+                        )}
                       </td>
                       <td className="py-2 pr-4 text-right whitespace-nowrap">
                         {s.freight_cost != null ? `${s.freight_cost.toFixed(2)} ${s.currency}` : "—"}
                       </td>
+                      {canEdit && (
+                        <td className="py-2 pl-4 text-right">
+                          <button
+                            onClick={() => handleDelete(s.id)}
+                            disabled={busyId === s.id}
+                            className="text-xs text-gray-400 hover:text-red-600 disabled:opacity-50"
+                            aria-label={`Delete shipment ${s.id}`}
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

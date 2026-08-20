@@ -347,6 +347,10 @@ export function updateShipmentStatus(shipmentId: number, status: string, workspa
   });
 }
 
+export function deleteShipment(shipmentId: number, workspaceId: number) {
+  return request<void>(`/shipments/${shipmentId}?workspace_id=${workspaceId}`, { method: "DELETE" });
+}
+
 export function addTrackingEvent(
   shipmentId: number,
   payload: { status: string; location?: string | null; event_date: string; note?: string | null },

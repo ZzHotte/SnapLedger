@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, insert, or_, select
+from sqlalchemy import delete, func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from starlette.concurrency import run_in_threadpool
@@ -254,6 +254,28 @@ async def update_shipment_status(
     await db.refresh(shipment, attribute_names=["customer", "carrier", "document"])
 
     return _to_shipment_out(shipment)
+
+
+@router.delete("/{shipment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_shipment(
+    shipment_id: int,
+    workspace_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    workspace, role = await resolve_workspace_membership(db, current_user, workspace_id)
+    require_editor(role)
+
+    shipment = await db.get(Shipment, shipment_id)
+    if shipment is None or shipment.workspace_id != workspace.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shipment not found")
+
+    # No ON DELETE CASCADE on these FKs — clear child rows first or the FK
+    # constraint rejects the delete.
+    await db.execute(delete(TrackingEvent).where(TrackingEvent.shipment_id == shipment.id))
+    await db.execute(delete(Quote).where(Quote.shipment_id == shipment.id))
+    await db.delete(shipment)
+    await db.commit()
 
 
 @router.post(

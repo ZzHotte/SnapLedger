@@ -8,8 +8,10 @@ from app.models import (
     Customer,
     FreightMode,
     MemberStatus,
+    Quote,
     Shipment,
     ShipmentStatus,
+    TrackingEvent,
     User,
     WorkspaceMember,
     WorkspaceRole,
@@ -445,6 +447,86 @@ async def test_viewer_cannot_update_shipment_status(client):
         json={"status": "booked"},
     )
     assert resp.status_code == 403
+
+
+async def test_delete_shipment(client):
+    token = await _register(client, "owner15@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    shipment_id = await _create_shipment(client, headers, workspace_id)
+
+    resp = await client.delete(f"/shipments/{shipment_id}", headers=headers)
+    assert resp.status_code == 204
+
+    get_resp = await client.get(f"/shipments/{shipment_id}", headers=headers)
+    assert get_resp.status_code == 404
+
+    list_resp = await client.get("/shipments", headers=headers)
+    assert list_resp.json()["total"] == 0
+
+
+async def test_delete_shipment_also_removes_its_quotes_and_tracking_events(client):
+    token = await _register(client, "owner16@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    shipment_id = await _create_shipment(client, headers, workspace_id)
+    carrier_resp = await client.post(
+        "/carriers", headers=headers, json={"name": "Maersk", "mode": "FCL"}
+    )
+    carrier_id = carrier_resp.json()["id"]
+    await client.post(
+        f"/shipments/{shipment_id}/quotes", headers=headers, json={"carrier_id": carrier_id, "amount": 100, "currency": "USD"}
+    )
+    await client.post(
+        f"/shipments/{shipment_id}/tracking-events",
+        headers=headers,
+        json={"status": "booked", "event_date": "2026-08-01"},
+    )
+
+    resp = await client.delete(f"/shipments/{shipment_id}", headers=headers)
+    assert resp.status_code == 204
+
+    async with client.session_maker() as db:
+        remaining_quotes = (await db.scalars(select(Quote).where(Quote.shipment_id == shipment_id))).all()
+        remaining_events = (
+            await db.scalars(select(TrackingEvent).where(TrackingEvent.shipment_id == shipment_id))
+        ).all()
+    assert remaining_quotes == []
+    assert remaining_events == []
+
+
+async def test_delete_unknown_shipment_404s(client):
+    token = await _register(client, "owner17@example.com")
+    resp = await client.delete("/shipments/999999", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 404
+
+
+async def test_viewer_cannot_delete_shipment(client):
+    owner_token = await _register(client, "owner18@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    workspace_id = await _workspace_id(client, owner_token)
+    shipment_id = await _create_shipment(client, owner_headers, workspace_id)
+    viewer_token = await _add_member(client, workspace_id, "viewer18@example.com", WorkspaceRole.viewer)
+
+    resp = await client.delete(
+        f"/shipments/{shipment_id}?workspace_id={workspace_id}",
+        headers={"Authorization": f"Bearer {viewer_token}"},
+    )
+    assert resp.status_code == 403
+
+
+async def test_delete_shipment_404s_for_workspace_caller_is_not_a_member_of(client):
+    owner_token = await _register(client, "owner19@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    workspace_id = await _workspace_id(client, owner_token)
+    shipment_id = await _create_shipment(client, owner_headers, workspace_id)
+    outsider_token = await _register(client, "outsider19@example.com")
+
+    resp = await client.delete(
+        f"/shipments/{shipment_id}?workspace_id={workspace_id}",
+        headers={"Authorization": f"Bearer {outsider_token}"},
+    )
+    assert resp.status_code == 404
 
 
 async def test_add_tracking_event_also_updates_shipment_status(client):

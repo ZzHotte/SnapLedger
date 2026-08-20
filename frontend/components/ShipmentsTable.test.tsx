@@ -3,15 +3,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import ShipmentsTable from "./ShipmentsTable";
 import type { Shipment, ShipmentListResult, Workspace } from "@/lib/api";
 
-const { useWorkspaceMock, fetchShipmentsMock } = vi.hoisted(() => ({
+const { useWorkspaceMock, fetchShipmentsMock, updateShipmentStatusMock, deleteShipmentMock } = vi.hoisted(() => ({
   useWorkspaceMock: vi.fn(),
   fetchShipmentsMock: vi.fn(),
+  updateShipmentStatusMock: vi.fn(),
+  deleteShipmentMock: vi.fn(),
 }));
 
 vi.mock("@/lib/workspace-context", () => ({ useWorkspace: useWorkspaceMock }));
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
-  return { ...actual, fetchShipments: fetchShipmentsMock };
+  return {
+    ...actual,
+    fetchShipments: fetchShipmentsMock,
+    updateShipmentStatus: updateShipmentStatusMock,
+    deleteShipment: deleteShipmentMock,
+  };
 });
 
 const WORKSPACE: Workspace = { id: 1, name: "My Freight Team", role: "owner" };
@@ -47,10 +54,14 @@ function pageOf(total: number, offset: number, limit: number): ShipmentListResul
 beforeEach(() => {
   useWorkspaceMock.mockReset();
   fetchShipmentsMock.mockReset();
+  updateShipmentStatusMock.mockReset();
+  deleteShipmentMock.mockReset();
   useWorkspaceMock.mockReturnValue({ currentWorkspace: WORKSPACE });
   fetchShipmentsMock.mockImplementation(async (_workspaceId: number, limit: number, offset: number) =>
     pageOf(120, offset, limit)
   );
+  updateShipmentStatusMock.mockResolvedValue(undefined);
+  deleteShipmentMock.mockResolvedValue(undefined);
 });
 
 describe("ShipmentsTable", () => {
@@ -143,7 +154,7 @@ describe("ShipmentsTable", () => {
     await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
     fetchShipmentsMock.mockClear();
 
-    fireEvent.click(screen.getByText("booked"));
+    fireEvent.click(screen.getByRole("button", { name: "booked" }));
     await waitFor(() =>
       expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, {
         q: undefined,
@@ -154,7 +165,7 @@ describe("ShipmentsTable", () => {
     );
 
     fetchShipmentsMock.mockClear();
-    fireEvent.click(screen.getByText("booked"));
+    fireEvent.click(screen.getByRole("button", { name: "booked" }));
     await waitFor(() =>
       expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, {
         q: undefined,
@@ -190,5 +201,74 @@ describe("ShipmentsTable", () => {
         sortDir: "desc",
       })
     );
+  });
+
+  it("changes a row's status inline and refetches", async () => {
+    render(<ShipmentsTable refreshKey={0} />);
+    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+    fetchShipmentsMock.mockClear();
+
+    fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "booked" } });
+
+    await waitFor(() => expect(updateShipmentStatusMock).toHaveBeenCalledWith(1, "booked", 1));
+    await waitFor(() => expect(fetchShipmentsMock).toHaveBeenCalled());
+  });
+
+  it("deletes a row after confirmation and refetches", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<ShipmentsTable refreshKey={0} />);
+    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+    fetchShipmentsMock.mockClear();
+
+    fireEvent.click(screen.getByLabelText("Delete shipment 1"));
+
+    await waitFor(() => expect(deleteShipmentMock).toHaveBeenCalledWith(1, 1));
+    await waitFor(() => expect(fetchShipmentsMock).toHaveBeenCalled());
+    confirmSpy.mockRestore();
+  });
+
+  it("does not delete when the confirmation is declined", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<ShipmentsTable refreshKey={0} />);
+    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText("Delete shipment 1"));
+
+    expect(deleteShipmentMock).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it("tracks row selection and shows a selection count", async () => {
+    render(<ShipmentsTable refreshKey={0} />);
+    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+
+    expect(screen.queryByText(/selected/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Select shipment 1"));
+    expect(await screen.findByText("1 selected")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Clear selection"));
+    expect(screen.queryByText(/selected/)).not.toBeInTheDocument();
+  });
+
+  it("selects all rows on the page via the header checkbox", async () => {
+    render(<ShipmentsTable refreshKey={0} />);
+    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText("Select all on page"));
+    expect(await screen.findByText("50 selected")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Select all on page"));
+    expect(screen.queryByText(/selected/)).not.toBeInTheDocument();
+  });
+
+  it("hides selection, inline status editing, and delete for viewers", async () => {
+    useWorkspaceMock.mockReturnValue({ currentWorkspace: { ...WORKSPACE, role: "viewer" } });
+    render(<ShipmentsTable refreshKey={0} />);
+    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+
+    expect(screen.queryByLabelText("Select all on page")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Delete shipment 1")).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("combobox")).toHaveLength(0);
   });
 });
