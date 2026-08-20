@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 
 class RegisterRequest(BaseModel):
@@ -167,6 +167,35 @@ class UpdateShipmentStatusRequest(BaseModel):
 
 class GenerateMockDataResponse(BaseModel):
     created: int
+
+
+class BulkIdsRequest(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=500)
+
+
+class BulkStatusRequest(BulkIdsRequest):
+    status: str = Field(
+        pattern="^(inquiry|quoted|booked|in_transit|arrived|customs|delivered|cancelled)$"
+    )
+
+
+class BulkDatesRequest(BulkIdsRequest):
+    shipment_date: date | None = None
+    eta: date | None = None
+
+    @model_validator(mode="after")
+    def _require_at_least_one_field(self) -> "BulkDatesRequest":
+        if self.shipment_date is None and self.eta is None:
+            raise ValueError("Provide at least one of shipment_date or eta")
+        return self
+
+
+class BulkUpdateResponse(BaseModel):
+    updated: int
+
+
+class BulkDeleteResponse(BaseModel):
+    deleted: int
 
 
 class QuoteOut(BaseModel):

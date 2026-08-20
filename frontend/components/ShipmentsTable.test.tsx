@@ -3,11 +3,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import ShipmentsTable from "./ShipmentsTable";
 import type { Shipment, ShipmentListResult, Workspace } from "@/lib/api";
 
-const { useWorkspaceMock, fetchShipmentsMock, updateShipmentStatusMock, deleteShipmentMock } = vi.hoisted(() => ({
+const {
+  useWorkspaceMock,
+  fetchShipmentsMock,
+  updateShipmentStatusMock,
+  deleteShipmentMock,
+  bulkUpdateShipmentStatusMock,
+  bulkUpdateShipmentDatesMock,
+  bulkDeleteShipmentsMock,
+} = vi.hoisted(() => ({
   useWorkspaceMock: vi.fn(),
   fetchShipmentsMock: vi.fn(),
   updateShipmentStatusMock: vi.fn(),
   deleteShipmentMock: vi.fn(),
+  bulkUpdateShipmentStatusMock: vi.fn(),
+  bulkUpdateShipmentDatesMock: vi.fn(),
+  bulkDeleteShipmentsMock: vi.fn(),
 }));
 
 vi.mock("@/lib/workspace-context", () => ({ useWorkspace: useWorkspaceMock }));
@@ -18,6 +29,9 @@ vi.mock("@/lib/api", async () => {
     fetchShipments: fetchShipmentsMock,
     updateShipmentStatus: updateShipmentStatusMock,
     deleteShipment: deleteShipmentMock,
+    bulkUpdateShipmentStatus: bulkUpdateShipmentStatusMock,
+    bulkUpdateShipmentDates: bulkUpdateShipmentDatesMock,
+    bulkDeleteShipments: bulkDeleteShipmentsMock,
   };
 });
 
@@ -56,12 +70,18 @@ beforeEach(() => {
   fetchShipmentsMock.mockReset();
   updateShipmentStatusMock.mockReset();
   deleteShipmentMock.mockReset();
+  bulkUpdateShipmentStatusMock.mockReset();
+  bulkUpdateShipmentDatesMock.mockReset();
+  bulkDeleteShipmentsMock.mockReset();
   useWorkspaceMock.mockReturnValue({ currentWorkspace: WORKSPACE });
   fetchShipmentsMock.mockImplementation(async (_workspaceId: number, limit: number, offset: number) =>
     pageOf(120, offset, limit)
   );
   updateShipmentStatusMock.mockResolvedValue(undefined);
   deleteShipmentMock.mockResolvedValue(undefined);
+  bulkUpdateShipmentStatusMock.mockResolvedValue({ updated: 0 });
+  bulkUpdateShipmentDatesMock.mockResolvedValue({ updated: 0 });
+  bulkDeleteShipmentsMock.mockResolvedValue({ deleted: 0 });
 });
 
 describe("ShipmentsTable", () => {
@@ -208,7 +228,7 @@ describe("ShipmentsTable", () => {
     await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
     fetchShipmentsMock.mockClear();
 
-    fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "booked" } });
+    fireEvent.change(screen.getByLabelText("Status for shipment 1"), { target: { value: "booked" } });
 
     await waitFor(() => expect(updateShipmentStatusMock).toHaveBeenCalledWith(1, "booked", 1));
     await waitFor(() => expect(fetchShipmentsMock).toHaveBeenCalled());
@@ -238,17 +258,17 @@ describe("ShipmentsTable", () => {
     confirmSpy.mockRestore();
   });
 
-  it("tracks row selection and shows a selection count", async () => {
+  it("tracks row selection and shows a selection count, staying visible at 0", async () => {
     render(<ShipmentsTable refreshKey={0} />);
     await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
 
-    expect(screen.queryByText(/selected/)).not.toBeInTheDocument();
+    expect(screen.getByText("0 selected")).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("Select shipment 1"));
     expect(await screen.findByText("1 selected")).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("Clear selection"));
-    expect(screen.queryByText(/selected/)).not.toBeInTheDocument();
+    expect(await screen.findByText("0 selected")).toBeInTheDocument();
   });
 
   it("selects all rows on the page via the header checkbox", async () => {
@@ -259,7 +279,7 @@ describe("ShipmentsTable", () => {
     expect(await screen.findByText("50 selected")).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("Select all on page"));
-    expect(screen.queryByText(/selected/)).not.toBeInTheDocument();
+    expect(await screen.findByText("0 selected")).toBeInTheDocument();
   });
 
   it("hides selection, inline status editing, and delete for viewers", async () => {
@@ -270,5 +290,68 @@ describe("ShipmentsTable", () => {
     expect(screen.queryByLabelText("Select all on page")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Delete shipment 1")).not.toBeInTheDocument();
     expect(screen.queryAllByRole("combobox")).toHaveLength(0);
+  });
+
+  it("bulk-updates the status of the selected rows and clears selection on success", async () => {
+    render(<ShipmentsTable refreshKey={0} />);
+    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText("Select shipment 1"));
+    fireEvent.click(screen.getByLabelText("Select shipment 2"));
+    await screen.findByText("2 selected");
+
+    fireEvent.change(screen.getByLabelText("Bulk status"), { target: { value: "booked" } });
+    fireEvent.click(screen.getByText("Set status"));
+
+    await waitFor(() => expect(bulkUpdateShipmentStatusMock).toHaveBeenCalledWith([1, 2], "booked", 1));
+    await waitFor(() => expect(screen.getByText("0 selected")).toBeInTheDocument());
+  });
+
+  it("bulk-updates dates for the selected rows, and the button stays disabled with no date set", async () => {
+    render(<ShipmentsTable refreshKey={0} />);
+    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText("Select shipment 1"));
+    await screen.findByText("1 selected");
+
+    expect(screen.getByText("Set dates")).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Bulk shipment date"), { target: { value: "2026-09-01" } });
+    expect(screen.getByText("Set dates")).not.toBeDisabled();
+
+    fireEvent.click(screen.getByText("Set dates"));
+
+    await waitFor(() =>
+      expect(bulkUpdateShipmentDatesMock).toHaveBeenCalledWith([1], { shipment_date: "2026-09-01", eta: undefined }, 1)
+    );
+    await waitFor(() => expect(screen.getByText("0 selected")).toBeInTheDocument());
+  });
+
+  it("bulk-deletes the selected rows after confirmation", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<ShipmentsTable refreshKey={0} />);
+    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText("Select shipment 1"));
+    await screen.findByText("1 selected");
+
+    fireEvent.click(screen.getByText("Delete selected"));
+
+    await waitFor(() => expect(bulkDeleteShipmentsMock).toHaveBeenCalledWith([1], 1));
+    await waitFor(() => expect(screen.getByText("0 selected")).toBeInTheDocument());
+    confirmSpy.mockRestore();
+  });
+
+  it("does not bulk-delete when the confirmation is declined", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<ShipmentsTable refreshKey={0} />);
+    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText("Select shipment 1"));
+    await screen.findByText("1 selected");
+    fireEvent.click(screen.getByText("Delete selected"));
+
+    expect(bulkDeleteShipmentsMock).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
   });
 });

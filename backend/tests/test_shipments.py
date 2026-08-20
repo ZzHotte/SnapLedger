@@ -529,6 +529,181 @@ async def test_delete_shipment_404s_for_workspace_caller_is_not_a_member_of(clie
     assert resp.status_code == 404
 
 
+async def test_bulk_update_status(client):
+    token = await _register(client, "bulk1@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    me = await client.get("/auth/me", headers=headers)
+    ids = [await _seed_shipment(client, workspace_id, me.json()["id"]) for _ in range(3)]
+
+    resp = await client.patch("/shipments/bulk-status", headers=headers, json={"ids": ids, "status": "booked"})
+    assert resp.status_code == 200
+    assert resp.json()["updated"] == 3
+
+    list_resp = await client.get("/shipments?status=booked", headers=headers)
+    assert list_resp.json()["total"] == 3
+
+
+async def test_bulk_update_status_ignores_ids_outside_the_workspace(client):
+    owner_token = await _register(client, "bulk2@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    workspace_id = await _workspace_id(client, owner_token)
+    me = await client.get("/auth/me", headers=owner_headers)
+    mine_id = await _seed_shipment(client, workspace_id, me.json()["id"])
+
+    other_token = await _register(client, "bulk2b@example.com")
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+    other_workspace_id = await _workspace_id(client, other_token)
+    other_me = await client.get("/auth/me", headers=other_headers)
+    others_id = await _seed_shipment(client, other_workspace_id, other_me.json()["id"])
+
+    resp = await client.patch(
+        "/shipments/bulk-status", headers=owner_headers, json={"ids": [mine_id, others_id], "status": "booked"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["updated"] == 1
+
+    async with client.session_maker() as db:
+        other_shipment = await db.get(Shipment, others_id)
+    assert other_shipment.status == ShipmentStatus.inquiry
+
+
+async def test_bulk_update_status_rejects_empty_ids(client):
+    token = await _register(client, "bulk3@example.com")
+    resp = await client.patch(
+        "/shipments/bulk-status", headers={"Authorization": f"Bearer {token}"}, json={"ids": [], "status": "booked"}
+    )
+    assert resp.status_code == 422
+
+
+async def test_viewer_cannot_bulk_update_status(client):
+    owner_token = await _register(client, "bulk4@example.com")
+    workspace_id = await _workspace_id(client, owner_token)
+    shipment_id = await _create_shipment(
+        client, {"Authorization": f"Bearer {owner_token}"}, workspace_id
+    )
+    viewer_token = await _add_member(client, workspace_id, "bulk4viewer@example.com", WorkspaceRole.viewer)
+
+    resp = await client.patch(
+        f"/shipments/bulk-status?workspace_id={workspace_id}",
+        headers={"Authorization": f"Bearer {viewer_token}"},
+        json={"ids": [shipment_id], "status": "booked"},
+    )
+    assert resp.status_code == 403
+
+
+async def test_bulk_update_dates(client):
+    token = await _register(client, "bulk5@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    me = await client.get("/auth/me", headers=headers)
+    ids = [await _seed_shipment(client, workspace_id, me.json()["id"]) for _ in range(2)]
+
+    resp = await client.patch(
+        "/shipments/bulk-dates", headers=headers, json={"ids": ids, "shipment_date": "2026-09-01", "eta": "2026-09-15"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["updated"] == 2
+
+    async with client.session_maker() as db:
+        rows = [await db.get(Shipment, i) for i in ids]
+    assert all(r.shipment_date.isoformat() == "2026-09-01" for r in rows)
+    assert all(r.eta.isoformat() == "2026-09-15" for r in rows)
+
+
+async def test_bulk_update_dates_rejects_when_neither_field_given(client):
+    token = await _register(client, "bulk6@example.com")
+    resp = await client.patch(
+        "/shipments/bulk-dates", headers={"Authorization": f"Bearer {token}"}, json={"ids": [1]}
+    )
+    assert resp.status_code == 422
+
+
+async def test_bulk_delete(client):
+    token = await _register(client, "bulk7@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    me = await client.get("/auth/me", headers=headers)
+    ids = [await _seed_shipment(client, workspace_id, me.json()["id"]) for _ in range(3)]
+
+    resp = await client.post("/shipments/bulk-delete", headers=headers, json={"ids": ids[:2]})
+    assert resp.status_code == 200
+    assert resp.json()["deleted"] == 2
+
+    list_resp = await client.get("/shipments", headers=headers)
+    assert list_resp.json()["total"] == 1
+
+
+async def test_bulk_delete_also_removes_quotes_and_tracking_events(client):
+    token = await _register(client, "bulk8@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    shipment_id = await _create_shipment(client, headers, workspace_id)
+    carrier_resp = await client.post("/carriers", headers=headers, json={"name": "Maersk", "mode": "FCL"})
+    carrier_id = carrier_resp.json()["id"]
+    await client.post(
+        f"/shipments/{shipment_id}/quotes",
+        headers=headers,
+        json={"carrier_id": carrier_id, "amount": 100, "currency": "USD"},
+    )
+    await client.post(
+        f"/shipments/{shipment_id}/tracking-events",
+        headers=headers,
+        json={"status": "booked", "event_date": "2026-08-01"},
+    )
+
+    resp = await client.post("/shipments/bulk-delete", headers=headers, json={"ids": [shipment_id]})
+    assert resp.status_code == 200
+    assert resp.json()["deleted"] == 1
+
+    async with client.session_maker() as db:
+        remaining_quotes = (await db.scalars(select(Quote).where(Quote.shipment_id == shipment_id))).all()
+        remaining_events = (
+            await db.scalars(select(TrackingEvent).where(TrackingEvent.shipment_id == shipment_id))
+        ).all()
+    assert remaining_quotes == []
+    assert remaining_events == []
+
+
+async def test_bulk_delete_ignores_ids_outside_the_workspace(client):
+    owner_token = await _register(client, "bulk9@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    workspace_id = await _workspace_id(client, owner_token)
+    me = await client.get("/auth/me", headers=owner_headers)
+    mine_id = await _seed_shipment(client, workspace_id, me.json()["id"])
+
+    other_token = await _register(client, "bulk9b@example.com")
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+    other_workspace_id = await _workspace_id(client, other_token)
+    other_me = await client.get("/auth/me", headers=other_headers)
+    others_id = await _seed_shipment(client, other_workspace_id, other_me.json()["id"])
+
+    resp = await client.post(
+        "/shipments/bulk-delete", headers=owner_headers, json={"ids": [mine_id, others_id]}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["deleted"] == 1
+
+    other_get = await client.get(f"/shipments/{others_id}", headers=other_headers)
+    assert other_get.status_code == 200
+
+
+async def test_viewer_cannot_bulk_delete(client):
+    owner_token = await _register(client, "bulk10@example.com")
+    workspace_id = await _workspace_id(client, owner_token)
+    shipment_id = await _create_shipment(
+        client, {"Authorization": f"Bearer {owner_token}"}, workspace_id
+    )
+    viewer_token = await _add_member(client, workspace_id, "bulk10viewer@example.com", WorkspaceRole.viewer)
+
+    resp = await client.post(
+        f"/shipments/bulk-delete?workspace_id={workspace_id}",
+        headers={"Authorization": f"Bearer {viewer_token}"},
+        json={"ids": [shipment_id]},
+    )
+    assert resp.status_code == 403
+
+
 async def test_add_tracking_event_also_updates_shipment_status(client):
     token = await _register(client, "owner14@example.com")
     headers = {"Authorization": f"Bearer {token}"}

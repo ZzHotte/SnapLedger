@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import delete, func, insert, or_, select
+from sqlalchemy import delete, func, insert, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from starlette.concurrency import run_in_threadpool
@@ -13,6 +13,11 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models import Carrier, Customer, FreightMode, Quote, Shipment, ShipmentStatus, TrackingEvent, User
 from app.schemas import (
+    BulkDatesRequest,
+    BulkDeleteResponse,
+    BulkIdsRequest,
+    BulkStatusRequest,
+    BulkUpdateResponse,
     CreateQuoteRequest,
     CreateShipmentRequest,
     CreateTrackingEventRequest,
@@ -276,6 +281,73 @@ async def delete_shipment(
     await db.execute(delete(Quote).where(Quote.shipment_id == shipment.id))
     await db.delete(shipment)
     await db.commit()
+
+
+@router.patch("/bulk-status", response_model=BulkUpdateResponse)
+async def bulk_update_status(
+    payload: BulkStatusRequest,
+    workspace_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    workspace, role = await resolve_workspace_membership(db, current_user, workspace_id)
+    require_editor(role)
+
+    # Scoped to workspace_id too so a caller can't affect another workspace's
+    # shipments just by passing its ids — ids outside this workspace are
+    # silently dropped from the match rather than erroring.
+    result = await db.execute(
+        update(Shipment)
+        .where(Shipment.id.in_(payload.ids), Shipment.workspace_id == workspace.id)
+        .values(status=ShipmentStatus(payload.status))
+    )
+    await db.commit()
+    return BulkUpdateResponse(updated=result.rowcount)
+
+
+@router.patch("/bulk-dates", response_model=BulkUpdateResponse)
+async def bulk_update_dates(
+    payload: BulkDatesRequest,
+    workspace_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    workspace, role = await resolve_workspace_membership(db, current_user, workspace_id)
+    require_editor(role)
+
+    values: dict = {}
+    if payload.shipment_date is not None:
+        values["shipment_date"] = payload.shipment_date
+    if payload.eta is not None:
+        values["eta"] = payload.eta
+
+    result = await db.execute(
+        update(Shipment).where(Shipment.id.in_(payload.ids), Shipment.workspace_id == workspace.id).values(**values)
+    )
+    await db.commit()
+    return BulkUpdateResponse(updated=result.rowcount)
+
+
+@router.post("/bulk-delete", response_model=BulkDeleteResponse)
+async def bulk_delete_shipments(
+    payload: BulkIdsRequest,
+    workspace_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    workspace, role = await resolve_workspace_membership(db, current_user, workspace_id)
+    require_editor(role)
+
+    # A POST rather than a DELETE-with-body — some HTTP clients/proxies drop
+    # bodies on DELETE, which would silently turn this into "delete nothing".
+    scoped_ids = select(Shipment.id).where(Shipment.id.in_(payload.ids), Shipment.workspace_id == workspace.id)
+    await db.execute(delete(TrackingEvent).where(TrackingEvent.shipment_id.in_(scoped_ids)))
+    await db.execute(delete(Quote).where(Quote.shipment_id.in_(scoped_ids)))
+    result = await db.execute(
+        delete(Shipment).where(Shipment.id.in_(payload.ids), Shipment.workspace_id == workspace.id)
+    )
+    await db.commit()
+    return BulkDeleteResponse(deleted=result.rowcount)
 
 
 @router.post(

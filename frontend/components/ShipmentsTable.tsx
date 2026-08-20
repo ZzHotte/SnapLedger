@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ApiError,
+  bulkDeleteShipments,
+  bulkUpdateShipmentDates,
+  bulkUpdateShipmentStatus,
   deleteShipment,
   fetchShipments,
   updateShipmentStatus,
@@ -48,16 +51,19 @@ function StatusSelect({
   status,
   disabled,
   onChange,
+  label,
 }: {
   status: string;
   disabled: boolean;
   onChange: (next: string) => void;
+  label: string;
 }) {
   return (
     <select
       value={status}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
+      aria-label={label}
       className={`rounded-full border-0 px-2 py-0.5 text-xs font-medium capitalize disabled:opacity-50 ${
         STATUS_STYLES[status] ?? "bg-gray-100 text-gray-700"
       }`}
@@ -112,6 +118,10 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
   const [localRefresh, setLocalRefresh] = useState(0);
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkStatus, setBulkStatus] = useState<string>(SHIPMENT_STATUSES[0]);
+  const [bulkShipmentDate, setBulkShipmentDate] = useState("");
+  const [bulkEta, setBulkEta] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -220,6 +230,59 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
     }
   }
 
+  async function handleBulkStatusApply() {
+    if (!currentWorkspace || selectedIds.size === 0) return;
+    setBulkBusy(true);
+    setRowError(null);
+    try {
+      await bulkUpdateShipmentStatus(Array.from(selectedIds), bulkStatus, currentWorkspace.id);
+      setSelectedIds(new Set());
+      setLocalRefresh((n) => n + 1);
+    } catch (err) {
+      setRowError(err instanceof ApiError ? err.message : "Failed to update status");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function handleBulkDatesApply() {
+    if (!currentWorkspace || selectedIds.size === 0) return;
+    if (!bulkShipmentDate && !bulkEta) return;
+    setBulkBusy(true);
+    setRowError(null);
+    try {
+      await bulkUpdateShipmentDates(
+        Array.from(selectedIds),
+        { shipment_date: bulkShipmentDate || undefined, eta: bulkEta || undefined },
+        currentWorkspace.id
+      );
+      setSelectedIds(new Set());
+      setBulkShipmentDate("");
+      setBulkEta("");
+      setLocalRefresh((n) => n + 1);
+    } catch (err) {
+      setRowError(err instanceof ApiError ? err.message : "Failed to update dates");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (!currentWorkspace || selectedIds.size === 0) return;
+    if (!window.confirm(`Delete ${selectedIds.size} shipment(s)? This can't be undone.`)) return;
+    setBulkBusy(true);
+    setRowError(null);
+    try {
+      await bulkDeleteShipments(Array.from(selectedIds), currentWorkspace.id);
+      setSelectedIds(new Set());
+      setLocalRefresh((n) => n + 1);
+    } catch (err) {
+      setRowError(err instanceof ApiError ? err.message : "Failed to delete shipments");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   function toggleRow(id: number) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -292,11 +355,74 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
         </div>
       </div>
 
-      {selectedIds.size > 0 && (
-        <div className="mb-2 flex items-center gap-3 rounded-md bg-gray-50 px-3 py-1.5 text-sm text-gray-600">
-          <span>{selectedIds.size} selected</span>
-          <button onClick={() => setSelectedIds(new Set())} className="underline-offset-2 hover:underline">
-            Clear selection
+      {canEdit && (
+        <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-600">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-gray-700">{selectedIds.size} selected</span>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              disabled={selectedIds.size === 0}
+              className="underline-offset-2 hover:underline disabled:opacity-40 disabled:no-underline"
+            >
+              Clear selection
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <select
+              value={bulkStatus}
+              onChange={(e) => setBulkStatus(e.target.value)}
+              disabled={bulkBusy || selectedIds.size === 0}
+              aria-label="Bulk status"
+              className="rounded-md border border-gray-300 px-2 py-1 text-xs capitalize disabled:opacity-40"
+            >
+              {SHIPMENT_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {statusLabel(s)}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={handleBulkStatusApply}
+              disabled={bulkBusy || selectedIds.size === 0}
+              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium hover:bg-gray-100 disabled:opacity-50"
+            >
+              Set status
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={bulkShipmentDate}
+              onChange={(e) => setBulkShipmentDate(e.target.value)}
+              disabled={bulkBusy || selectedIds.size === 0}
+              aria-label="Bulk shipment date"
+              className="rounded-md border border-gray-300 px-2 py-1 text-xs disabled:opacity-40"
+            />
+            <input
+              type="date"
+              value={bulkEta}
+              onChange={(e) => setBulkEta(e.target.value)}
+              disabled={bulkBusy || selectedIds.size === 0}
+              aria-label="Bulk ETA"
+              className="rounded-md border border-gray-300 px-2 py-1 text-xs disabled:opacity-40"
+            />
+            <button
+              onClick={handleBulkDatesApply}
+              disabled={bulkBusy || selectedIds.size === 0 || (!bulkShipmentDate && !bulkEta)}
+              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium hover:bg-gray-100 disabled:opacity-50"
+            >
+              Set dates
+            </button>
+          </div>
+
+          <button
+            onClick={handleBulkDelete}
+            disabled={bulkBusy || selectedIds.size === 0}
+            className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+          >
+            Delete selected
           </button>
         </div>
       )}
@@ -379,6 +505,7 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
                             status={s.status}
                             disabled={busyId === s.id}
                             onChange={(next) => handleRowStatusChange(s.id, next)}
+                            label={`Status for shipment ${s.id}`}
                           />
                         ) : (
                           <StatusBadge status={s.status} />

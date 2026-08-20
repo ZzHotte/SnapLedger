@@ -351,6 +351,31 @@ export function deleteShipment(shipmentId: number, workspaceId: number) {
   return request<void>(`/shipments/${shipmentId}?workspace_id=${workspaceId}`, { method: "DELETE" });
 }
 
+export function bulkUpdateShipmentStatus(ids: number[], status: string, workspaceId: number) {
+  return request<{ updated: number }>(`/shipments/bulk-status?workspace_id=${workspaceId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ ids, status }),
+  });
+}
+
+export function bulkUpdateShipmentDates(
+  ids: number[],
+  dates: { shipment_date?: string; eta?: string },
+  workspaceId: number
+) {
+  return request<{ updated: number }>(`/shipments/bulk-dates?workspace_id=${workspaceId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ ids, ...dates }),
+  });
+}
+
+export function bulkDeleteShipments(ids: number[], workspaceId: number) {
+  return request<{ deleted: number }>(`/shipments/bulk-delete?workspace_id=${workspaceId}`, {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
+}
+
 export function addTrackingEvent(
   shipmentId: number,
   payload: { status: string; location?: string | null; event_date: string; note?: string | null },
