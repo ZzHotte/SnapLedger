@@ -124,7 +124,7 @@ export default function ShipmentDetailClient({ shipmentId }: { shipmentId: numbe
     return (
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-6">
         <p className="text-sm text-red-600">{error}</p>
-        <Link href="/" className="text-sm text-gray-500 underline">
+        <Link href="/dashboard" className="text-sm text-gray-500 underline">
           Back
         </Link>
       </main>
@@ -139,7 +139,7 @@ export default function ShipmentDetailClient({ shipmentId }: { shipmentId: numbe
         <h1 className="text-xl font-semibold">
           {shipment.origin_port || "—"} → {shipment.destination_port || "—"}
         </h1>
-        <Link href="/" className="text-sm text-gray-500 underline">
+        <Link href="/dashboard" className="text-sm text-gray-500 underline">
           Back
         </Link>
       </div>

@@ -55,10 +55,18 @@ export default function NavBar() {
         )}
         {currentWorkspace && (
           <Link
-            href="/dashboard"
+            href="/"
             className="text-sm text-gray-500 underline-offset-2 hover:text-black hover:underline"
           >
             Dashboard
+          </Link>
+        )}
+        {currentWorkspace && (
+          <Link
+            href="/dashboard"
+            className="text-sm text-gray-500 underline-offset-2 hover:text-black hover:underline"
+          >
+            Shipments
           </Link>
         )}
         {currentWorkspace && (
