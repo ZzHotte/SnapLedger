@@ -16,6 +16,7 @@ import {
 } from "@/lib/api";
 import { SHIPMENT_STATUSES } from "@/lib/constants";
 import { useWorkspace } from "@/lib/workspace-context";
+import { Button } from "@/components/ui/Button";
 
 const PAGE_SIZE = 50;
 const SEARCH_DEBOUNCE_MS = 350;
@@ -89,10 +90,10 @@ interface SortHeaderProps {
 function SortHeader({ label, column, sortBy, sortDir, onSort, align = "left" }: SortHeaderProps) {
   const active = sortBy === column;
   return (
-    <th className={`py-2 pr-4 font-medium ${align === "right" ? "text-right" : ""}`}>
+    <th className={`py-2.5 pr-4 text-[11px] font-medium tracking-wide uppercase ${align === "right" ? "text-right" : ""}`}>
       <button
         onClick={() => onSort(column)}
-        className={`inline-flex items-center gap-1 hover:text-black ${active ? "text-black" : ""}`}
+        className={`inline-flex items-center gap-1 transition-colors hover:text-gray-900 ${active ? "text-gray-900" : ""}`}
       >
         {label}
         <span className="text-gray-400">{active ? (sortDir === "asc" ? "▲" : "▼") : ""}</span>
@@ -321,16 +322,16 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
-    <div className="w-full">
-      <div className="mb-3 flex flex-wrap items-center gap-3">
+    <div className="w-full overflow-hidden rounded-lg border border-gray-200 bg-white">
+      <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 p-4">
         <input
           type="search"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           placeholder="Search customer, port, cargo, container…"
-          className="w-64 rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+          className="w-64 rounded-md border border-gray-300 px-3 py-1.5 text-sm transition-colors focus:border-gray-400 focus:outline-none"
         />
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-1.5">
           {SHIPMENT_STATUSES.map((s) => (
             <button
               key={s}
@@ -338,7 +339,7 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
               className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize transition-colors ${
                 statusFilter.includes(s)
                   ? "bg-black text-white"
-                  : "border border-gray-300 text-gray-600 hover:border-gray-400"
+                  : "border border-gray-300 text-gray-600 hover:border-gray-400 hover:bg-gray-50"
               }`}
             >
               {statusLabel(s)}
@@ -356,7 +357,7 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
       </div>
 
       {canEdit && (
-        <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-600">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-gray-100 bg-gray-50 px-4 py-2.5 text-sm text-gray-600">
           <div className="flex items-center gap-2">
             <span className="font-medium text-gray-700">{selectedIds.size} selected</span>
             <button
@@ -382,13 +383,9 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
                 </option>
               ))}
             </select>
-            <button
-              onClick={handleBulkStatusApply}
-              disabled={bulkBusy || selectedIds.size === 0}
-              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium hover:bg-gray-100 disabled:opacity-50"
-            >
+            <Button variant="secondary" size="sm" onClick={handleBulkStatusApply} disabled={bulkBusy || selectedIds.size === 0}>
               Set status
-            </button>
+            </Button>
           </div>
 
           <div className="flex items-center gap-1.5">
@@ -408,29 +405,26 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
               aria-label="Bulk ETA"
               className="rounded-md border border-gray-300 px-2 py-1 text-xs disabled:opacity-40"
             />
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={handleBulkDatesApply}
               disabled={bulkBusy || selectedIds.size === 0 || (!bulkShipmentDate && !bulkEta)}
-              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium hover:bg-gray-100 disabled:opacity-50"
             >
               Set dates
-            </button>
+            </Button>
           </div>
 
-          <button
-            onClick={handleBulkDelete}
-            disabled={bulkBusy || selectedIds.size === 0}
-            className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-          >
+          <Button variant="danger" size="sm" onClick={handleBulkDelete} disabled={bulkBusy || selectedIds.size === 0}>
             Delete selected
-          </button>
+          </Button>
         </div>
       )}
 
-      {rowError && <p className="mb-2 text-sm text-red-600">{rowError}</p>}
+      {rowError && <p className="px-4 pt-3 text-sm text-red-600">{rowError}</p>}
 
       {everLoaded && total === 0 && !loading && hasFilters ? (
-        <p className="text-sm text-gray-500">No shipments match your search/filters.</p>
+        <p className="p-4 text-sm text-gray-500">No shipments match your search/filters.</p>
       ) : (
         <>
           <div className="relative">
@@ -449,9 +443,9 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
             >
               <table className="w-full min-w-[760px] text-left text-sm">
                 <thead>
-                  <tr className="border-b border-gray-200 text-gray-500">
+                  <tr className="border-b border-gray-200 bg-gray-50/60 text-gray-500">
                     {canEdit && (
-                      <th className="py-2 pr-2 font-medium">
+                      <th className="py-2.5 pr-2 pl-4 font-medium">
                         <input
                           type="checkbox"
                           checked={allOnPageSelected}
@@ -462,8 +456,8 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
                     )}
                     <SortHeader label="Date" column="shipment_date" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
                     <SortHeader label="Customer" column="customer" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-                    <th className="py-2 pr-4 font-medium">Route</th>
-                    <th className="py-2 pr-4 font-medium">Mode</th>
+                    <th className="py-2.5 pr-4 text-[11px] font-medium tracking-wide uppercase">Route</th>
+                    <th className="py-2.5 pr-4 text-[11px] font-medium tracking-wide uppercase">Mode</th>
                     <SortHeader label="Status" column="status" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
                     <SortHeader
                       label="Freight cost"
@@ -473,14 +467,14 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
                       onSort={handleSort}
                       align="right"
                     />
-                    {canEdit && <th className="py-2 pl-4 font-medium" />}
+                    {canEdit && <th className="py-2.5 pr-4 pl-4 font-medium" />}
                   </tr>
                 </thead>
                 <tbody>
                   {shipments.map((s) => (
-                    <tr key={s.id} className="border-b border-gray-100">
+                    <tr key={s.id} className="border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50">
                       {canEdit && (
-                        <td className="py-2 pr-2">
+                        <td className="py-2.5 pr-2 pl-4">
                           <input
                             type="checkbox"
                             checked={selectedIds.has(s.id)}
@@ -489,17 +483,17 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
                           />
                         </td>
                       )}
-                      <td className="py-2 pr-4 whitespace-nowrap">
-                        <Link href={`/shipments/${s.id}`} className="hover:underline">
+                      <td className="py-2.5 pr-4 whitespace-nowrap">
+                        <Link href={`/shipments/${s.id}`} className="transition-colors hover:text-gray-900 hover:underline">
                           {s.shipment_date}
                         </Link>
                       </td>
-                      <td className="py-2 pr-4">{s.customer_name || "—"}</td>
-                      <td className="py-2 pr-4 whitespace-nowrap">
+                      <td className="py-2.5 pr-4">{s.customer_name || "—"}</td>
+                      <td className="py-2.5 pr-4 whitespace-nowrap">
                         {s.origin_port || "—"} → {s.destination_port || "—"}
                       </td>
-                      <td className="py-2 pr-4">{s.freight_mode}</td>
-                      <td className="py-2 pr-4">
+                      <td className="py-2.5 pr-4">{s.freight_mode}</td>
+                      <td className="py-2.5 pr-4">
                         {canEdit ? (
                           <StatusSelect
                             status={s.status}
@@ -511,15 +505,15 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
                           <StatusBadge status={s.status} />
                         )}
                       </td>
-                      <td className="py-2 pr-4 text-right whitespace-nowrap">
+                      <td className="py-2.5 pr-4 text-right whitespace-nowrap tabular-nums">
                         {s.freight_cost != null ? `${s.freight_cost.toFixed(2)} ${s.currency}` : "—"}
                       </td>
                       {canEdit && (
-                        <td className="py-2 pl-4 text-right">
+                        <td className="py-2.5 pr-4 pl-4 text-right">
                           <button
                             onClick={() => handleDelete(s.id)}
                             disabled={busyId === s.id}
-                            className="text-xs text-gray-400 hover:text-red-600 disabled:opacity-50"
+                            className="text-xs text-gray-400 transition-colors hover:text-red-600 disabled:opacity-50"
                             aria-label={`Delete shipment ${s.id}`}
                           >
                             Delete
@@ -533,28 +527,30 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
             </div>
           </div>
 
-          {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+          {error && <p className="px-4 pt-2 text-sm text-red-600">{error}</p>}
 
-          <div className="mt-3 flex items-center justify-between text-sm text-gray-500">
+          <div className="flex items-center justify-between border-t border-gray-100 p-4 text-sm text-gray-500">
             <span>{total} shipments</span>
             <div className="flex items-center gap-2">
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 disabled={loading || page === 0}
-                className="rounded-md border border-gray-300 px-2 py-1 disabled:opacity-40"
               >
                 Prev
-              </button>
-              <span>
+              </Button>
+              <span className="tabular-nums">
                 Page {page + 1} of {totalPages}
               </span>
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                 disabled={loading || page + 1 >= totalPages}
-                className="rounded-md border border-gray-300 px-2 py-1 disabled:opacity-40"
               >
                 Next
-              </button>
+              </Button>
             </div>
           </div>
         </>
