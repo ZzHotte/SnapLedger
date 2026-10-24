@@ -1,4 +1,4 @@
-.PHONY: build backend frontend test down logs
+.PHONY: build backend frontend frontend-prod test down logs
 
 # First-time setup (or after a Dockerfile change) — builds backend + frontend images.
 # `make backend` / `make frontend` also auto-build on first run, this just does both up front.
@@ -27,6 +27,16 @@ test:
 	docker compose exec frontend npm run lint
 	docker compose exec frontend npm test
 	docker compose exec frontend npm run build
+
+# One-shot: build and run the frontend's production image (next build +
+# next start, via the Dockerfile's `runner` stage) to sanity-check it locally —
+# the dev target above never exercises this path, since compose always runs
+# `npm run dev` there.
+frontend-prod:
+	docker build --target runner \
+		--build-arg NEXT_PUBLIC_API_URL=$$(grep '^NEXT_PUBLIC_API_URL=' .env | cut -d= -f2) \
+		-t snapledger-frontend-prod ./frontend
+	docker run --rm -p 3000:3000 --env-file .env snapledger-frontend-prod
 
 down:
 	docker compose down

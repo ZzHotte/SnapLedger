@@ -134,3 +134,22 @@ docker compose exec backend bash
 docker compose down
 ```
 
+## Production build (frontend)
+
+`docker compose` / `make frontend` always run `next dev` (fast edit-reload, but
+every route is compiled on first visit — fine for development, too slow for
+real traffic). `frontend/Dockerfile` is a multi-stage build; its default
+(`runner`) stage instead runs `next build` + the standalone `next start`
+server, which is what an actual deployment should use.
+
+To sanity-check that build locally:
+
+```Bash
+make frontend-prod
+```
+
+This builds the `runner` stage (passing `NEXT_PUBLIC_API_URL` from `.env` as a
+build arg — `NEXT_PUBLIC_*` vars are inlined into the browser bundle at build
+time, so they must be set then, not just at container start) and runs it on
+[http://localhost:3000](http://localhost:3000).
+
