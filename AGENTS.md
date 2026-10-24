@@ -1,6 +1,6 @@
 # SnapLedger
 
-Freight-forwarding CRM. Next.js (App Router) frontend + FastAPI backend, Postgres (Neon) database. Monorepo: `frontend/` and `backend/` are independent apps with their own dependencies, tests, and Vercel deployments — see `frontend/AGENTS.md` and `backend/AGENTS.md` for stack-specific conventions.
+Freight-forwarding CRM. Next.js (App Router) frontend + FastAPI backend, Postgres (Neon) database. Monorepo: `frontend/` and `backend/` are independent apps with their own dependencies, tests, and Vercel deployments — see `frontend/CLAUDE.md` and `backend/AGENTS.md` for stack-specific conventions.
 
 ## Before you build something
 
@@ -24,7 +24,7 @@ Freight-forwarding CRM. Next.js (App Router) frontend + FastAPI backend, Postgre
 make test   # full suite: backend pytest+ruff, frontend lint+test+build, via docker compose
 ```
 
-Or individually — see `backend/AGENTS.md` / `frontend/AGENTS.md` for the exact commands. CI (`.github/workflows/ci.yml`) runs the same checks on every push and PR to `main`.
+Or individually — see `backend/AGENTS.md` / `frontend/CLAUDE.md` for the exact commands. CI (`.github/workflows/ci.yml`) runs the same checks on every push and PR to `main`.
 
 ## Git
 
