@@ -24,16 +24,22 @@ class UserOut(BaseModel):
     base_currency: str
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    user: UserOut
-
-
 class WorkspaceOut(BaseModel):
     id: int
     name: str
     role: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserOut
+    workspaces: list[WorkspaceOut]
+
+
+class SessionResponse(BaseModel):
+    user: UserOut
+    workspaces: list[WorkspaceOut]
 
 
 class WorkspaceMemberOut(BaseModel):

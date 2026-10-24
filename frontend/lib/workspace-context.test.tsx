@@ -35,8 +35,8 @@ function TestConsumer() {
   );
 }
 
-function renderWithUser(user: User | null) {
-  useAuthMock.mockReturnValue({ user });
+function renderWithUser(user: User | null, bootstrapWorkspaces: unknown = null) {
+  useAuthMock.mockReturnValue({ user, bootstrapWorkspaces, clearBootstrapWorkspaces: vi.fn() });
   return render(
     <WorkspaceProvider>
       <TestConsumer />
@@ -106,5 +106,24 @@ describe("WorkspaceProvider", () => {
     expect(await screen.findByTestId("workspace-count")).toHaveTextContent("0");
     expect(screen.getByTestId("current-id")).toHaveTextContent("none");
     expect(fetchWorkspacesMock).not.toHaveBeenCalled();
+  });
+
+  it("uses workspaces bundled with the user instead of fetching them again", async () => {
+    const clearBootstrapWorkspaces = vi.fn();
+    useAuthMock.mockReturnValue({
+      user: FAKE_USER,
+      bootstrapWorkspaces: [{ id: 1, name: "My Freight Team", role: "owner" }],
+      clearBootstrapWorkspaces,
+    });
+
+    render(
+      <WorkspaceProvider>
+        <TestConsumer />
+      </WorkspaceProvider>
+    );
+
+    await waitFor(() => expect(screen.getByTestId("current-id")).toHaveTextContent("1"));
+    expect(fetchWorkspacesMock).not.toHaveBeenCalled();
+    expect(clearBootstrapWorkspaces).toHaveBeenCalledTimes(1);
   });
 });

@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { fetchCurrentUser, loginUser, registerUser, type User } from "./api";
+import { fetchSession, loginUser, registerUser, type User, type Workspace } from "./api";
 
 interface AuthContextValue {
   user: User | null;
@@ -11,6 +11,12 @@ interface AuthContextValue {
   register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => void;
   setToken: (token: string) => Promise<void>;
+  // Workspaces fetched alongside the user in the same request (session restore,
+  // login, register, OAuth callback all return both in one round trip) — lets
+  // WorkspaceProvider skip its own /workspaces call the first time. Consumed
+  // (cleared) once WorkspaceProvider reads it, so later refreshes hit the API.
+  bootstrapWorkspaces: Workspace[] | null;
+  clearBootstrapWorkspaces: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -18,6 +24,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [bootstrapWorkspaces, setBootstrapWorkspaces] = useState<Workspace[] | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -30,8 +37,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       try {
-        const me = await fetchCurrentUser();
-        if (!cancelled) setUser(me);
+        const session = await fetchSession();
+        if (!cancelled) {
+          setUser(session.user);
+          setBootstrapWorkspaces(session.workspaces);
+        }
       } catch {
         localStorage.removeItem("token");
       } finally {
@@ -49,6 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await loginUser(email, password);
     localStorage.setItem("token", res.access_token);
     setUser(res.user);
+    setBootstrapWorkspaces(res.workspaces);
     router.push("/");
   }
 
@@ -56,24 +67,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await registerUser(email, password, name);
     localStorage.setItem("token", res.access_token);
     setUser(res.user);
+    setBootstrapWorkspaces(res.workspaces);
     router.push("/");
   }
 
   async function setToken(token: string) {
     localStorage.setItem("token", token);
-    const me = await fetchCurrentUser();
-    setUser(me);
+    const session = await fetchSession();
+    setUser(session.user);
+    setBootstrapWorkspaces(session.workspaces);
     router.push("/");
   }
 
   function logout() {
     localStorage.removeItem("token");
     setUser(null);
+    setBootstrapWorkspaces(null);
     router.push("/login");
   }
 
+  function clearBootstrapWorkspaces() {
+    setBootstrapWorkspaces(null);
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, setToken }}>
+    <AuthContext.Provider
+      value={{ user, loading, login, register, logout, setToken, bootstrapWorkspaces, clearBootstrapWorkspaces }}
+    >
       {children}
     </AuthContext.Provider>
   );

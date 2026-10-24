@@ -73,10 +73,17 @@ export interface User {
   base_currency: string;
 }
 
+export interface Workspace {
+  id: number;
+  name: string;
+  role: "owner" | "editor" | "viewer";
+}
+
 export interface TokenResponse {
   access_token: string;
   token_type: string;
   user: User;
+  workspaces: Workspace[];
 }
 
 export function registerUser(email: string, password: string, name: string) {
@@ -93,18 +100,21 @@ export function loginUser(email: string, password: string) {
   });
 }
 
-export function fetchCurrentUser() {
-  return request<User>("/auth/me");
+export interface SessionResponse {
+  user: User;
+  workspaces: Workspace[];
+}
+
+// Bundles the user profile and their workspace list in one request — used for
+// session restore (token already in localStorage) and the OAuth callback,
+// where separate /auth/me + /workspaces calls would otherwise be a forced
+// serial waterfall (the second can't start until the first resolves).
+export function fetchSession() {
+  return request<SessionResponse>("/auth/session");
 }
 
 export function googleLoginUrl() {
   return `${API_URL}/auth/google/login`;
-}
-
-export interface Workspace {
-  id: number;
-  name: string;
-  role: "owner" | "editor" | "viewer";
 }
 
 export function fetchWorkspaces() {

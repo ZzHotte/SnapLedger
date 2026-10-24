@@ -17,7 +17,7 @@ interface WorkspaceContextValue {
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, bootstrapWorkspaces, clearBootstrapWorkspaces } = useAuth();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [currentWorkspaceId, setCurrentWorkspaceId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,7 +31,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
     setLoading(true);
     try {
-      const data = await fetchWorkspaces();
+      // The user was just resolved via a request that already bundled the
+      // workspace list (session restore, login, register, OAuth callback) —
+      // use it instead of firing a redundant /workspaces call. Cleared after
+      // one use so later refreshes (e.g. after accepting an invite) hit the API.
+      const data = bootstrapWorkspaces ?? (await fetchWorkspaces());
+      if (bootstrapWorkspaces) clearBootstrapWorkspaces();
       setWorkspaces(data);
       setCurrentWorkspaceId((prevId) => {
         // keep the current selection if it's still valid (e.g. after inviting
@@ -45,7 +50,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, bootstrapWorkspaces, clearBootstrapWorkspaces]);
 
   useEffect(() => {
     // refresh is a stable useCallback exposed for manual re-syncs elsewhere (e.g.
