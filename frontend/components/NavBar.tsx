@@ -1,48 +1,65 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspace } from "@/lib/workspace-context";
+import Logo from "@/components/ui/Logo";
+import { Button } from "@/components/ui/Button";
 
-function ContainerMark() {
+function NavTab({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
   return (
-    <svg
-      viewBox="0 0 28 28"
-      width={22}
-      height={22}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.6}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+        active ? "bg-gray-100 text-black" : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+      }`}
     >
-      <rect x="2" y="6" width="24" height="16" rx="1.5" />
-      <path d="M8 6v16M14 6v16M20 6v16" />
-      <path d="M2 12h24M2 17h24" />
-    </svg>
+      {children}
+    </Link>
   );
 }
 
 export default function NavBar() {
   const { user, logout } = useAuth();
   const { workspaces, currentWorkspace, selectWorkspace } = useWorkspace();
+  const pathname = usePathname();
 
   if (!user) return null;
 
-  return (
-    <header className="flex items-center justify-between border-b border-gray-200 px-6 py-3">
-      <Link href="/" className="flex items-center gap-2">
-        <ContainerMark />
-        <span className="text-sm font-semibold">SnapLedger CRM</span>
-      </Link>
+  const navItems = [
+    { href: "/", label: "Dashboard", requiresWorkspace: true },
+    { href: "/dashboard", label: "Shipments", requiresWorkspace: true },
+    { href: "/customers", label: "Customers", requiresWorkspace: true },
+    { href: "/market-data", label: "Market Data", requiresWorkspace: false },
+  ];
 
-      <div className="flex items-center gap-4">
+  return (
+    <header className="flex items-center justify-between gap-4 border-b border-gray-200 bg-white px-6 py-3">
+      <div className="flex items-center gap-6">
+        <Link href="/" aria-label="SnapLedger home">
+          <Logo />
+        </Link>
+
+        <nav className="flex items-center gap-1">
+          {navItems.map(
+            (item) =>
+              (!item.requiresWorkspace || currentWorkspace) && (
+                <NavTab key={item.href} href={item.href} active={pathname === item.href}>
+                  {item.label}
+                </NavTab>
+              )
+          )}
+        </nav>
+      </div>
+
+      <div className="flex items-center gap-3">
         {currentWorkspace && (
           <select
             value={currentWorkspace.id}
             onChange={(e) => selectWorkspace(Number(e.target.value))}
-            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+            className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-700"
             aria-label="Switch workspace"
           >
             {workspaces.map((w) => (
@@ -55,49 +72,21 @@ export default function NavBar() {
         )}
         {currentWorkspace && (
           <Link
-            href="/"
-            className="text-sm text-gray-500 underline-offset-2 hover:text-black hover:underline"
-          >
-            Dashboard
-          </Link>
-        )}
-        {currentWorkspace && (
-          <Link
-            href="/dashboard"
-            className="text-sm text-gray-500 underline-offset-2 hover:text-black hover:underline"
-          >
-            Shipments
-          </Link>
-        )}
-        {currentWorkspace && (
-          <Link
-            href="/customers"
-            className="text-sm text-gray-500 underline-offset-2 hover:text-black hover:underline"
-          >
-            Customers
-          </Link>
-        )}
-        <Link
-          href="/market-data"
-          className="text-sm text-gray-500 underline-offset-2 hover:text-black hover:underline"
-        >
-          Market Data
-        </Link>
-        {currentWorkspace && (
-          <Link
             href={`/workspaces/${currentWorkspace.id}/members`}
-            className="text-sm text-gray-500 underline-offset-2 hover:text-black hover:underline"
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              pathname === `/workspaces/${currentWorkspace.id}/members`
+                ? "bg-gray-100 text-black"
+                : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+            }`}
           >
             Team
           </Link>
         )}
-        <span className="text-sm text-gray-500">{user.name || user.email}</span>
-        <button
-          onClick={logout}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
-        >
+        <div className="mx-1 h-5 w-px bg-gray-200" aria-hidden="true" />
+        <span className="hidden text-sm text-gray-500 sm:inline">{user.name || user.email}</span>
+        <Button variant="secondary" size="sm" onClick={logout}>
           Log out
-        </button>
+        </Button>
       </div>
     </header>
   );
