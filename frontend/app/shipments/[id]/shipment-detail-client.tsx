@@ -46,9 +46,14 @@ export default function ShipmentDetailClient({ shipmentId }: { shipmentId: numbe
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchShipment(shipmentId, currentWorkspace.id);
+      // Independent requests — fetchCarriers doesn't need the shipment, and
+      // fetchShipment doesn't need the carrier list — so run them together
+      // instead of waiting on one before starting the other.
+      const [data, carrierList] = await Promise.all([
+        fetchShipment(shipmentId, currentWorkspace.id),
+        fetchCarriers(currentWorkspace.id),
+      ]);
       setShipment(data);
-      const carrierList = await fetchCarriers(currentWorkspace.id);
       setCarriers(carrierList);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load shipment");

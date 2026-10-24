@@ -58,7 +58,6 @@ async def upload_document(
     )
     db.add(document)
     await db.commit()
-    await db.refresh(document)
 
     return DocumentOut(
         id=document.id,
@@ -121,7 +120,6 @@ async def confirm_document(
         # confirms both passed the pending-status check before either committed.
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Document already confirmed")
-    await db.refresh(shipment)
 
     customer = await db.get(Customer, shipment.customer_id)
     carrier = await db.get(Carrier, shipment.carrier_id) if shipment.carrier_id else None

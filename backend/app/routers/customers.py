@@ -49,7 +49,6 @@ async def create_customer(
     )
     db.add(customer)
     await db.commit()
-    await db.refresh(customer)
 
     return CustomerOut(
         id=customer.id,

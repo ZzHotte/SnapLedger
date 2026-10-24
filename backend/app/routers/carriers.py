@@ -45,6 +45,5 @@ async def create_carrier(
     )
     db.add(carrier)
     await db.commit()
-    await db.refresh(carrier)
 
     return CarrierOut(id=carrier.id, name=carrier.name, mode=carrier.mode.value, contact_email=carrier.contact_email)

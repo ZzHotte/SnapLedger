@@ -162,8 +162,10 @@ async def create_shipment(
         document_id=None,
     )
     db.add(shipment)
+    # No refresh needed: the session is expire_on_commit=False, so the fields
+    # set above stay as-is, and commit's implicit RETURNING already populated
+    # the one server-generated column (created_at) used below.
     await db.commit()
-    await db.refresh(shipment)
 
     customer = await db.get(Customer, shipment.customer_id)
     carrier = await db.get(Carrier, shipment.carrier_id) if shipment.carrier_id else None
@@ -255,8 +257,10 @@ async def update_shipment_status(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shipment not found")
 
     shipment.status = ShipmentStatus(payload.status)
+    # customer/carrier/document were already eagerly loaded above and this
+    # update doesn't touch them — expire_on_commit=False means they're still
+    # attached after commit, so there's nothing here for a refresh to fetch.
     await db.commit()
-    await db.refresh(shipment, attribute_names=["customer", "carrier", "document"])
 
     return _to_shipment_out(shipment)
 
@@ -378,7 +382,6 @@ async def add_tracking_event(
     # A new tracking event is treated as the shipment's latest known status.
     shipment.status = event.status
     await db.commit()
-    await db.refresh(event)
 
     return TrackingEventOut(
         id=event.id, status=event.status.value, location=event.location, event_date=event.event_date, note=event.note
@@ -413,7 +416,6 @@ async def add_quote(
     )
     db.add(quote)
     await db.commit()
-    await db.refresh(quote)
 
     return QuoteOut(
         id=quote.id,

@@ -82,7 +82,6 @@ async def create_invite(
     )
     db.add(invite)
     await db.commit()
-    await db.refresh(invite)
 
     return InviteOut(id=invite.id, invite_code=invite.invite_code, role=invite.role.value, expires_at=invite.expires_at)
 
@@ -160,16 +159,33 @@ async def update_member_role(
     if user_id == current_user.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Owner cannot change their own role")
 
-    member = await get_active_member(db, workspace_id, user_id)
-    if member is None:
+    # member + the user whose name/email the response needs, in one query —
+    # get_active_member alone would leave a separate db.get(User, ...) after
+    # commit (same shape as the auth-flow fixes elsewhere in this codebase).
+    found = (
+        await db.execute(
+            select(WorkspaceMember, User)
+            .join(User, User.id == WorkspaceMember.user_id)
+            .where(
+                WorkspaceMember.workspace_id == workspace_id,
+                WorkspaceMember.user_id == user_id,
+                WorkspaceMember.status == MemberStatus.active,
+            )
+        )
+    ).first()
+    if found is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+    member, target_user = found
 
     member.role = WorkspaceRole(payload.role)
     await db.commit()
 
-    user = await db.get(User, user_id)
     return WorkspaceMemberOut(
-        user_id=user.id, email=user.email, name=user.name, role=member.role.value, joined_at=member.joined_at
+        user_id=target_user.id,
+        email=target_user.email,
+        name=target_user.name,
+        role=member.role.value,
+        joined_at=member.joined_at,
     )
 
 

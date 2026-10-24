@@ -71,7 +71,6 @@ async def get_exchange_rate(db: AsyncSession, base: str, target: str) -> Exchang
         existing.rate = rate
         existing.fetched_at = now
         await db.commit()
-        await db.refresh(existing)
         return existing
 
     new_row = ExchangeRate(base_currency=base, target_currency=target, rate=rate, fetched_at=now)
@@ -88,7 +87,6 @@ async def get_exchange_rate(db: AsyncSession, base: str, target: str) -> Exchang
         new_row.rate = rate
         new_row.fetched_at = now
         await db.commit()
-    await db.refresh(new_row)
     return new_row
 
 
@@ -132,7 +130,6 @@ async def get_gdp_per_capita(db: AsyncSession, country_code: str) -> MacroIndica
         existing.year = year
         existing.fetched_at = now
         await db.commit()
-        await db.refresh(existing)
         return existing
 
     new_row = MacroIndicator(
@@ -154,7 +151,6 @@ async def get_gdp_per_capita(db: AsyncSession, country_code: str) -> MacroIndica
         new_row.year = year
         new_row.fetched_at = now
         await db.commit()
-    await db.refresh(new_row)
     return new_row
 
 
