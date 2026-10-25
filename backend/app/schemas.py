@@ -267,6 +267,10 @@ class MoneyAmount(BaseModel):
     amount: float
 
 
+class ShipmentSummaryOut(BaseModel):
+    total_freight_cost: list[MoneyAmount]
+
+
 class StatusBreakdown(BaseModel):
     status: str
     count: int

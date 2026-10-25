@@ -13,6 +13,7 @@ import {
 import { ButtonLink } from "@/components/ui/Button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import SegmentedControl from "@/components/ui/SegmentedControl";
+import { formatAmounts, formatMoney } from "@/lib/format";
 
 type Metric = "count" | "value";
 
@@ -33,17 +34,6 @@ function monthLabelLong(month: string): string {
 
 function statusLabel(status: string): string {
   return status.replace("_", " ");
-}
-
-function formatMoney(amount: number): string {
-  return amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-// "12,345.00 USD" for a single currency, "12,345.00 USD · 800.00 EUR" when a
-// section mixes currencies — never blended into one (meaningless) number.
-function formatAmounts(amounts: MoneyAmount[]): string {
-  if (amounts.length === 0) return "0.00";
-  return amounts.map((a) => `${formatMoney(a.amount)} ${a.currency}`).join(" · ");
 }
 
 // The currency to scale bar charts against. Returns null when a section's

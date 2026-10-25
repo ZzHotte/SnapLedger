@@ -294,8 +294,15 @@ export type SortDir = "asc" | "desc";
 export interface ShipmentListParams {
   q?: string;
   status?: string[];
+  freightMode?: string[];
   sortBy?: ShipmentSortBy;
   sortDir?: SortDir;
+}
+
+function appendShipmentFilterParams(search: URLSearchParams, params: ShipmentListParams) {
+  if (params.q) search.set("q", params.q);
+  for (const s of params.status ?? []) search.append("status", s);
+  for (const m of params.freightMode ?? []) search.append("freight_mode", m);
 }
 
 export function fetchShipments(
@@ -309,10 +316,9 @@ export function fetchShipments(
     limit: String(limit),
     offset: String(offset),
   });
-  if (params.q) search.set("q", params.q);
   if (params.sortBy) search.set("sort_by", params.sortBy);
   if (params.sortDir) search.set("sort_dir", params.sortDir);
-  for (const s of params.status ?? []) search.append("status", s);
+  appendShipmentFilterParams(search, params);
 
   return request<ShipmentListResult>(`/shipments?${search.toString()}`);
 }
@@ -324,6 +330,19 @@ export interface ShipmentStatusCount {
 
 export function fetchShipmentStatusCounts(workspaceId: number) {
   return request<ShipmentStatusCount[]>(`/shipments/status-counts?workspace_id=${workspaceId}`);
+}
+
+export interface ShipmentSummary {
+  total_freight_cost: MoneyAmount[];
+}
+
+export function fetchShipmentsSummary(
+  workspaceId: number,
+  params: Pick<ShipmentListParams, "q" | "status" | "freightMode"> = {}
+) {
+  const search = new URLSearchParams({ workspace_id: String(workspaceId) });
+  appendShipmentFilterParams(search, params);
+  return request<ShipmentSummary>(`/shipments/summary?${search.toString()}`);
 }
 
 export function generateMockData(workspaceId: number, count: number) {

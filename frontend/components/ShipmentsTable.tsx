@@ -10,17 +10,95 @@ import {
   deleteShipment,
   fetchShipments,
   fetchShipmentStatusCounts,
+  fetchShipmentsSummary,
   updateShipmentStatus,
   type Shipment,
   type ShipmentSortBy,
   type SortDir,
 } from "@/lib/api";
-import { SHIPMENT_STATUSES } from "@/lib/constants";
+import { formatAmounts } from "@/lib/format";
+import { FREIGHT_MODES, SHIPMENT_STATUSES } from "@/lib/constants";
 import { useWorkspace } from "@/lib/workspace-context";
 import { Button } from "@/components/ui/Button";
+import Popover from "@/components/ui/Popover";
 
-const PAGE_SIZE = 50;
+const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100] as const;
+const DEFAULT_PAGE_SIZE = 50;
 const SEARCH_DEBOUNCE_MS = 350;
+
+type ColumnKey = "date" | "customer" | "route" | "mode" | "status" | "cost";
+
+const COLUMN_DEFS: { key: ColumnKey; label: string }[] = [
+  { key: "date", label: "Date" },
+  { key: "customer", label: "Customer" },
+  { key: "route", label: "Route" },
+  { key: "mode", label: "Mode" },
+  { key: "status", label: "Status" },
+  { key: "cost", label: "Freight cost" },
+];
+
+type Density = "compact" | "default" | "relaxed";
+
+const ROW_PADDING: Record<Density, string> = {
+  compact: "py-1",
+  default: "py-2.5",
+  relaxed: "py-4",
+};
+
+function readLocalStorage<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeLocalStorage(key: string, value: unknown) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // private browsing / quota — these are just remembered view prefs, fine to drop
+  }
+}
+
+function FilterIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 6h16M7 12h10M10 18h4" />
+    </svg>
+  );
+}
+
+function ViewIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 7h5M3 12h5M3 17h5M14 7h7M14 12h7M14 17h7" />
+    </svg>
+  );
+}
+
+function ChevronIcon({ direction }: { direction: "left" | "right" }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={direction === "left" ? "M15 18l-6-6 6-6" : "M9 18l6-6-6-6"} />
+    </svg>
+  );
+}
+
+// First page, last page, current page ± 1, "…" where the window skips pages —
+// standard windowed pagination so a 1,000-page table doesn't render 1,000 buttons.
+function pageWindow(current: number, total: number): (number | "ellipsis")[] {
+  const pages = new Set<number>([0, total - 1, current - 1, current, current + 1]);
+  const sorted = [...pages].filter((p) => p >= 0 && p < total).sort((a, b) => a - b);
+  const out: (number | "ellipsis")[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0 && sorted[i] - sorted[i - 1] > 1) out.push("ellipsis");
+    out.push(sorted[i]);
+  }
+  return out;
+}
 
 const STATUS_STYLES: Record<string, string> = {
   inquiry: "bg-gray-100 text-gray-700",
@@ -135,7 +213,17 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [total, setTotal] = useState(0);
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  const [summaryAmounts, setSummaryAmounts] = useState<{ currency: string; amount: number }[]>([]);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState<number>(() => readLocalStorage("shipments.pageSize", DEFAULT_PAGE_SIZE));
+  const [density, setDensity] = useState<Density>(() => readLocalStorage("shipments.density", "default" as Density));
+  const [showSummaryRow, setShowSummaryRow] = useState(() => readLocalStorage("shipments.showSummaryRow", true));
+  const [visibleColumns, setVisibleColumns] = useState<ColumnKey[]>(() =>
+    readLocalStorage(
+      "shipments.visibleColumns",
+      COLUMN_DEFS.map((c) => c.key)
+    )
+  );
   const [loading, setLoading] = useState(true);
   const [everLoaded, setEverLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -155,6 +243,7 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [freightModeFilter, setFreightModeFilter] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<ShipmentSortBy>("shipment_date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
@@ -163,8 +252,27 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
     return () => clearTimeout(t);
   }, [searchInput]);
 
+  useEffect(() => writeLocalStorage("shipments.pageSize", pageSize), [pageSize]);
+  useEffect(() => writeLocalStorage("shipments.density", density), [density]);
+  useEffect(() => writeLocalStorage("shipments.showSummaryRow", showSummaryRow), [showSummaryRow]);
+  useEffect(() => writeLocalStorage("shipments.visibleColumns", visibleColumns), [visibleColumns]);
+
   function toggleStatus(s: string) {
     setStatusFilter((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
+  }
+
+  function toggleFreightMode(m: string) {
+    setFreightModeFilter((prev) => (prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]));
+  }
+
+  function toggleColumn(key: ColumnKey) {
+    setVisibleColumns((prev) => {
+      if (prev.includes(key)) {
+        if (prev.length === 1) return prev; // keep at least one column visible
+        return prev.filter((k) => k !== key);
+      }
+      return COLUMN_DEFS.map((c) => c.key).filter((k) => prev.includes(k) || k === key);
+    });
   }
 
   function handleSort(column: ShipmentSortBy) {
@@ -184,7 +292,7 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
   // rather than in a separate effect: a second effect would still fire the fetch
   // effect below once with the stale `page` before the reset lands, wasting a
   // request on every change that happens while page > 0.
-  const resetKey = `${currentWorkspace?.id ?? "none"}:${refreshKey}:${debouncedSearch}:${statusFilter.join(",")}:${sortBy}:${sortDir}`;
+  const resetKey = `${currentWorkspace?.id ?? "none"}:${refreshKey}:${debouncedSearch}:${statusFilter.join(",")}:${freightModeFilter.join(",")}:${sortBy}:${sortDir}:${pageSize}`;
   const [prevResetKey, setPrevResetKey] = useState(resetKey);
   if (resetKey !== prevResetKey) {
     setPrevResetKey(resetKey);
@@ -201,9 +309,10 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
       setLoading(true);
       setError(null);
       try {
-        const data = await fetchShipments(workspaceId, PAGE_SIZE, page * PAGE_SIZE, {
+        const data = await fetchShipments(workspaceId, pageSize, page * pageSize, {
           q: debouncedSearch || undefined,
           status: statusFilter.length > 0 ? statusFilter : undefined,
+          freightMode: freightModeFilter.length > 0 ? freightModeFilter : undefined,
           sortBy,
           sortDir,
         });
@@ -223,7 +332,7 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
     return () => {
       cancelled = true;
     };
-  }, [refreshKey, currentWorkspace, page, debouncedSearch, statusFilter, sortBy, sortDir, localRefresh]);
+  }, [refreshKey, currentWorkspace, page, pageSize, debouncedSearch, statusFilter, freightModeFilter, sortBy, sortDir, localRefresh]);
 
   // Separate from the list fetch above — the filter chips' counts are a
   // workspace-wide overview, not scoped to the current search/filter/page, so
@@ -249,6 +358,31 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
       cancelled = true;
     };
   }, [currentWorkspace, refreshKey, localRefresh]);
+
+  // The summary row's sum is a total over every row matching the current
+  // search/status/freight-mode filters, not just the current page — so it
+  // refetches on those, unlike the status chips' workspace-wide counts above.
+  useEffect(() => {
+    if (!currentWorkspace) return;
+    const workspaceId = currentWorkspace.id;
+    let cancelled = false;
+
+    fetchShipmentsSummary(workspaceId, {
+      q: debouncedSearch || undefined,
+      status: statusFilter.length > 0 ? statusFilter : undefined,
+      freightMode: freightModeFilter.length > 0 ? freightModeFilter : undefined,
+    })
+      .then((data) => {
+        if (!cancelled) setSummaryAmounts(data.total_freight_cost);
+      })
+      .catch(() => {
+        if (!cancelled) setSummaryAmounts([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentWorkspace, refreshKey, localRefresh, debouncedSearch, statusFilter, freightModeFilter]);
 
   async function handleRowStatusChange(shipmentId: number, nextStatus: string) {
     if (!currentWorkspace) return;
@@ -372,14 +506,135 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
     return <p className="text-sm text-gray-500">No shipments yet — upload a shipping document to get started.</p>;
   }
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const totalAllCounts = Object.values(statusCounts).reduce((sum, n) => sum + n, 0);
+  const visibleColumnDefs = COLUMN_DEFS.filter((c) => visibleColumns.includes(c.key));
+  const padding = ROW_PADDING[density];
+  const rangeStart = total === 0 ? 0 : page * pageSize + 1;
+  const rangeEnd = Math.min((page + 1) * pageSize, total);
+
+  function renderHeaderCell(key: ColumnKey) {
+    switch (key) {
+      case "date":
+        return <SortHeader key={key} label="Date" column="shipment_date" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />;
+      case "customer":
+        return <SortHeader key={key} label="Customer" column="customer" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />;
+      case "route":
+        return (
+          <th key={key} className="py-2.5 pr-4 text-[11px] font-medium tracking-wide uppercase">
+            Route
+          </th>
+        );
+      case "mode":
+        return (
+          <th key={key} className="py-2.5 pr-4 text-[11px] font-medium tracking-wide uppercase">
+            Mode
+          </th>
+        );
+      case "status":
+        return <SortHeader key={key} label="Status" column="status" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />;
+      case "cost":
+        return (
+          <SortHeader
+            key={key}
+            label="Freight cost"
+            column="cost"
+            sortBy={sortBy}
+            sortDir={sortDir}
+            onSort={handleSort}
+            align="right"
+          />
+        );
+    }
+  }
+
+  function renderBodyCell(key: ColumnKey, s: Shipment) {
+    switch (key) {
+      case "date":
+        return (
+          <td key={key} className={`${padding} pr-4 whitespace-nowrap`}>
+            <Link href={`/shipments/${s.id}`} className="transition-colors hover:text-gray-900 hover:underline">
+              {s.shipment_date}
+            </Link>
+          </td>
+        );
+      case "customer":
+        return (
+          <td key={key} className={`${padding} pr-4`}>
+            <span className="flex items-center gap-2.5">
+              <Avatar name={s.customer_name || "—"} />
+              {s.customer_name || "—"}
+            </span>
+          </td>
+        );
+      case "route":
+        return (
+          <td key={key} className={`${padding} pr-4 whitespace-nowrap`}>
+            {s.origin_port || "—"} → {s.destination_port || "—"}
+          </td>
+        );
+      case "mode":
+        return (
+          <td key={key} className={`${padding} pr-4`}>
+            {s.freight_mode}
+          </td>
+        );
+      case "status":
+        return (
+          <td key={key} className={`${padding} pr-4`}>
+            {canEdit ? (
+              <StatusSelect
+                status={s.status}
+                disabled={busyId === s.id}
+                onChange={(next) => handleRowStatusChange(s.id, next)}
+                label={`Status for shipment ${s.id}`}
+              />
+            ) : (
+              <StatusBadge status={s.status} />
+            )}
+          </td>
+        );
+      case "cost":
+        return (
+          <td key={key} className={`${padding} pr-4 text-right font-medium whitespace-nowrap text-gray-900 tabular-nums`}>
+            {s.freight_cost != null ? `${s.freight_cost.toFixed(2)} ${s.currency}` : "—"}
+          </td>
+        );
+    }
+  }
 
   return (
     <div className="w-full overflow-hidden rounded-lg border border-gray-200 bg-white">
       <div className="flex items-baseline gap-2 border-b border-gray-100 px-4 py-3.5">
         <h2 className="text-[15px] font-semibold text-gray-900">Shipments</h2>
         <span className="text-[13px] text-gray-400">{total.toLocaleString()} records</span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-gray-100 px-4 pt-3.5 pb-2.5">
+        <button
+          onClick={() => setStatusFilter([])}
+          className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+            statusFilter.length === 0
+              ? "bg-black text-white"
+              : "border border-gray-300 text-gray-600 hover:border-gray-400 hover:bg-gray-50"
+          }`}
+        >
+          All {totalAllCounts.toLocaleString()}
+        </button>
+        {SHIPMENT_STATUSES.map((s) => (
+          <button
+            key={s}
+            onClick={() => toggleStatus(s)}
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium capitalize transition-colors ${
+              statusFilter.includes(s)
+                ? "bg-black text-white"
+                : "border border-gray-300 text-gray-600 hover:border-gray-400 hover:bg-gray-50"
+            }`}
+          >
+            <StatusDot status={s} className={statusFilter.includes(s) ? "bg-white" : ""} />
+            {statusLabel(s)} {(statusCounts[s] ?? 0).toLocaleString()}
+          </button>
+        ))}
       </div>
 
       <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 p-4">
@@ -390,31 +645,114 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
           placeholder="Search customer, port, cargo, container…"
           className="w-64 rounded-md border border-gray-300 px-3 py-1.5 text-sm transition-colors focus:border-gray-400 focus:outline-none"
         />
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            onClick={() => setStatusFilter([])}
-            className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
-              statusFilter.length === 0
-                ? "bg-black text-white"
-                : "border border-gray-300 text-gray-600 hover:border-gray-400 hover:bg-gray-50"
-            }`}
+        <div className="ml-auto flex items-center gap-2">
+          <Popover
+            label="Filter"
+            icon={<FilterIcon />}
+            active={statusFilter.length > 0 || freightModeFilter.length > 0}
+            panelClassName="w-64"
           >
-            All {totalAllCounts.toLocaleString()}
-          </button>
-          {SHIPMENT_STATUSES.map((s) => (
-            <button
-              key={s}
-              onClick={() => toggleStatus(s)}
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium capitalize transition-colors ${
-                statusFilter.includes(s)
-                  ? "bg-black text-white"
-                  : "border border-gray-300 text-gray-600 hover:border-gray-400 hover:bg-gray-50"
-              }`}
-            >
-              <StatusDot status={s} className={statusFilter.includes(s) ? "bg-white" : ""} />
-              {statusLabel(s)} {(statusCounts[s] ?? 0).toLocaleString()}
-            </button>
-          ))}
+            {() => (
+              <div className="flex flex-col gap-3 p-1">
+                <div>
+                  <p className="px-1 pb-1.5 text-[11px] font-medium tracking-wide text-gray-400 uppercase">Status</p>
+                  <div className="flex flex-col gap-0.5">
+                    {SHIPMENT_STATUSES.map((s) => (
+                      <label
+                        key={s}
+                        className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-gray-50"
+                      >
+                        <span className="flex items-center gap-2">
+                          <input type="checkbox" checked={statusFilter.includes(s)} onChange={() => toggleStatus(s)} />
+                          <StatusDot status={s} />
+                          <span className="capitalize">{statusLabel(s)}</span>
+                        </span>
+                        <span className="text-xs text-gray-400">{(statusCounts[s] ?? 0).toLocaleString()}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="px-1 pb-1.5 text-[11px] font-medium tracking-wide text-gray-400 uppercase">Freight mode</p>
+                  <div className="flex flex-col gap-0.5">
+                    {FREIGHT_MODES.map((m) => (
+                      <label key={m} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-gray-50">
+                        <input
+                          type="checkbox"
+                          checked={freightModeFilter.includes(m)}
+                          onChange={() => toggleFreightMode(m)}
+                        />
+                        {m}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                {(statusFilter.length > 0 || freightModeFilter.length > 0) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStatusFilter([]);
+                      setFreightModeFilter([]);
+                    }}
+                    className="self-start px-1 text-xs text-gray-500 underline-offset-2 hover:underline"
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </div>
+            )}
+          </Popover>
+
+          <Popover label="View" icon={<ViewIcon />} panelClassName="w-72">
+            {() => (
+              <div className="flex flex-col gap-3 p-1">
+                <div>
+                  <p className="px-1 pb-1.5 text-[11px] font-medium tracking-wide text-gray-400 uppercase">Density</p>
+                  <div className="flex gap-1 rounded-md bg-gray-100 p-0.5">
+                    {(["compact", "default", "relaxed"] as Density[]).map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setDensity(d)}
+                        className={`flex-1 rounded px-2 py-1 text-xs font-medium capitalize transition-colors ${
+                          density === d ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                        }`}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <label className="flex items-center justify-between gap-2 rounded-md px-1 py-1.5 text-sm text-gray-700">
+                  Summary row
+                  <input
+                    type="checkbox"
+                    checked={showSummaryRow}
+                    onChange={(e) => setShowSummaryRow(e.target.checked)}
+                  />
+                </label>
+
+                <div>
+                  <p className="px-1 pb-1.5 text-[11px] font-medium tracking-wide text-gray-400 uppercase">
+                    Columns · {visibleColumns.length}/{COLUMN_DEFS.length}
+                  </p>
+                  <div className="flex flex-col gap-0.5">
+                    {COLUMN_DEFS.map((c) => (
+                      <label key={c.key} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-gray-50">
+                        <input
+                          type="checkbox"
+                          checked={visibleColumns.includes(c.key)}
+                          onChange={() => toggleColumn(c.key)}
+                        />
+                        {c.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </Popover>
         </div>
       </div>
 
@@ -516,19 +854,7 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
                         />
                       </th>
                     )}
-                    <SortHeader label="Date" column="shipment_date" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-                    <SortHeader label="Customer" column="customer" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-                    <th className="py-2.5 pr-4 text-[11px] font-medium tracking-wide uppercase">Route</th>
-                    <th className="py-2.5 pr-4 text-[11px] font-medium tracking-wide uppercase">Mode</th>
-                    <SortHeader label="Status" column="status" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-                    <SortHeader
-                      label="Freight cost"
-                      column="cost"
-                      sortBy={sortBy}
-                      sortDir={sortDir}
-                      onSort={handleSort}
-                      align="right"
-                    />
+                    {visibleColumnDefs.map((c) => renderHeaderCell(c.key))}
                     {canEdit && <th className="py-2.5 pr-4 pl-4 font-medium" />}
                   </tr>
                 </thead>
@@ -536,7 +862,7 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
                   {shipments.map((s) => (
                     <tr key={s.id} className="border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50">
                       {canEdit && (
-                        <td className="py-2.5 pr-2 pl-4">
+                        <td className={`${padding} pr-2 pl-4`}>
                           <input
                             type="checkbox"
                             checked={selectedIds.has(s.id)}
@@ -545,38 +871,9 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
                           />
                         </td>
                       )}
-                      <td className="py-2.5 pr-4 whitespace-nowrap">
-                        <Link href={`/shipments/${s.id}`} className="transition-colors hover:text-gray-900 hover:underline">
-                          {s.shipment_date}
-                        </Link>
-                      </td>
-                      <td className="py-2.5 pr-4">
-                        <span className="flex items-center gap-2.5">
-                          <Avatar name={s.customer_name || "—"} />
-                          {s.customer_name || "—"}
-                        </span>
-                      </td>
-                      <td className="py-2.5 pr-4 whitespace-nowrap">
-                        {s.origin_port || "—"} → {s.destination_port || "—"}
-                      </td>
-                      <td className="py-2.5 pr-4">{s.freight_mode}</td>
-                      <td className="py-2.5 pr-4">
-                        {canEdit ? (
-                          <StatusSelect
-                            status={s.status}
-                            disabled={busyId === s.id}
-                            onChange={(next) => handleRowStatusChange(s.id, next)}
-                            label={`Status for shipment ${s.id}`}
-                          />
-                        ) : (
-                          <StatusBadge status={s.status} />
-                        )}
-                      </td>
-                      <td className="py-2.5 pr-4 text-right font-medium whitespace-nowrap text-gray-900 tabular-nums">
-                        {s.freight_cost != null ? `${s.freight_cost.toFixed(2)} ${s.currency}` : "—"}
-                      </td>
+                      {visibleColumnDefs.map((c) => renderBodyCell(c.key, s))}
                       {canEdit && (
-                        <td className="py-2.5 pr-4 pl-4 text-right">
+                        <td className={`${padding} pr-4 pl-4 text-right`}>
                           <button
                             onClick={() => handleDelete(s.id)}
                             disabled={busyId === s.id}
@@ -590,34 +887,89 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
                     </tr>
                   ))}
                 </tbody>
+                {showSummaryRow && (
+                  <tfoot>
+                    <tr className="border-t border-gray-200 bg-gray-50/60 text-xs text-gray-500">
+                      {canEdit && <td className="py-2 pr-2 pl-4" />}
+                      {visibleColumnDefs.map((c, i) => (
+                        <td
+                          key={c.key}
+                          className={`py-2 pr-4 whitespace-nowrap ${
+                            c.key === "cost" ? "text-right font-medium text-gray-700 tabular-nums" : ""
+                          }`}
+                        >
+                          {i === 0 && `${total.toLocaleString()} rows`}
+                          {c.key === "cost" && `SUM ${formatAmounts(summaryAmounts)}`}
+                        </td>
+                      ))}
+                      {canEdit && <td className="py-2 pr-4 pl-4" />}
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           </div>
 
           {error && <p className="px-4 pt-2 text-sm text-red-600">{error}</p>}
 
-          <div className="flex items-center justify-between border-t border-gray-100 p-4 text-sm text-gray-500">
-            <span>{total} shipments</span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 p-4 text-sm text-gray-500">
+            <div className="flex items-center gap-3">
+              <span className="tabular-nums">
+                {rangeStart.toLocaleString()}–{rangeEnd.toLocaleString()} of {total.toLocaleString()}
+              </span>
+              <label className="flex items-center gap-1.5">
+                Rows
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  aria-label="Rows per page"
+                  className="rounded-md border border-gray-300 px-1.5 py-1 text-sm"
+                >
+                  {ROWS_PER_PAGE_OPTIONS.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 disabled={loading || page === 0}
+                aria-label="Previous page"
+                className="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
               >
-                Prev
-              </Button>
-              <span className="tabular-nums">
-                Page {page + 1} of {totalPages}
-              </span>
-              <Button
-                variant="secondary"
-                size="sm"
+                <ChevronIcon direction="left" />
+              </button>
+              {pageWindow(page, totalPages).map((p, i) =>
+                p === "ellipsis" ? (
+                  <span key={`ellipsis-${i}`} className="px-1.5 text-gray-400">
+                    …
+                  </span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    disabled={loading}
+                    aria-current={p === page ? "page" : undefined}
+                    className={`min-w-[1.75rem] rounded-md px-1.5 py-1 text-sm tabular-nums transition-colors ${
+                      p === page ? "bg-black text-white" : "text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    {p + 1}
+                  </button>
+                )
+              )}
+              <button
                 onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                 disabled={loading || page + 1 >= totalPages}
+                aria-label="Next page"
+                className="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
               >
-                Next
-              </Button>
+                <ChevronIcon direction="right" />
+              </button>
             </div>
           </div>
         </>

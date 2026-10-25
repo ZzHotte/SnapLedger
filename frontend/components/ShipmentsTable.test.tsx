@@ -7,6 +7,7 @@ const {
   useWorkspaceMock,
   fetchShipmentsMock,
   fetchShipmentStatusCountsMock,
+  fetchShipmentsSummaryMock,
   updateShipmentStatusMock,
   deleteShipmentMock,
   bulkUpdateShipmentStatusMock,
@@ -16,6 +17,7 @@ const {
   useWorkspaceMock: vi.fn(),
   fetchShipmentsMock: vi.fn(),
   fetchShipmentStatusCountsMock: vi.fn(),
+  fetchShipmentsSummaryMock: vi.fn(),
   updateShipmentStatusMock: vi.fn(),
   deleteShipmentMock: vi.fn(),
   bulkUpdateShipmentStatusMock: vi.fn(),
@@ -30,6 +32,7 @@ vi.mock("@/lib/api", async () => {
     ...actual,
     fetchShipments: fetchShipmentsMock,
     fetchShipmentStatusCounts: fetchShipmentStatusCountsMock,
+    fetchShipmentsSummary: fetchShipmentsSummaryMock,
     updateShipmentStatus: updateShipmentStatusMock,
     deleteShipment: deleteShipmentMock,
     bulkUpdateShipmentStatus: bulkUpdateShipmentStatusMock,
@@ -69,9 +72,11 @@ function pageOf(total: number, offset: number, limit: number): ShipmentListResul
 }
 
 beforeEach(() => {
+  window.localStorage.clear();
   useWorkspaceMock.mockReset();
   fetchShipmentsMock.mockReset();
   fetchShipmentStatusCountsMock.mockReset();
+  fetchShipmentsSummaryMock.mockReset();
   updateShipmentStatusMock.mockReset();
   deleteShipmentMock.mockReset();
   bulkUpdateShipmentStatusMock.mockReset();
@@ -82,6 +87,7 @@ beforeEach(() => {
     pageOf(120, offset, limit)
   );
   fetchShipmentStatusCountsMock.mockResolvedValue([{ status: "inquiry", count: 120 }]);
+  fetchShipmentsSummaryMock.mockResolvedValue({ total_freight_cost: [{ currency: "USD", amount: 1234.5 }] });
   updateShipmentStatusMock.mockResolvedValue(undefined);
   deleteShipmentMock.mockResolvedValue(undefined);
   bulkUpdateShipmentStatusMock.mockResolvedValue({ updated: 0 });
@@ -93,17 +99,17 @@ describe("ShipmentsTable", () => {
   it("fetches page 0 on mount", async () => {
     render(<ShipmentsTable refreshKey={0} />);
 
-    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
-    expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, { q: undefined, status: undefined, sortBy: "shipment_date", sortDir: "desc" });
+    await waitFor(() => expect(screen.getByText("120 records")).toBeInTheDocument());
+    expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, { q: undefined, status: undefined, freightMode: undefined, sortBy: "shipment_date", sortDir: "desc" });
   });
 
   it("does not re-fetch the stale offset when refreshKey changes while on page > 0", async () => {
     const { rerender } = render(<ShipmentsTable refreshKey={0} />);
-    await waitFor(() => expect(screen.getByText("Page 1 of 3")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("1–50 of 120")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByText("Next"));
-    await waitFor(() => expect(screen.getByText("Page 2 of 3")).toBeInTheDocument());
-    expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 50, { q: undefined, status: undefined, sortBy: "shipment_date", sortDir: "desc" });
+    fireEvent.click(screen.getByLabelText("Next page"));
+    await waitFor(() => expect(screen.getByText("51–100 of 120")).toBeInTheDocument());
+    expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 50, { q: undefined, status: undefined, freightMode: undefined, sortBy: "shipment_date", sortDir: "desc" });
 
     fetchShipmentsMock.mockClear();
 
@@ -112,9 +118,9 @@ describe("ShipmentsTable", () => {
     // stale offset (100) before resetting to page 0.
     rerender(<ShipmentsTable refreshKey={1} />);
 
-    await waitFor(() => expect(screen.getByText("Page 1 of 3")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("1–50 of 120")).toBeInTheDocument());
     expect(fetchShipmentsMock).toHaveBeenCalledTimes(1);
-    expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, { q: undefined, status: undefined, sortBy: "shipment_date", sortDir: "desc" });
+    expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, { q: undefined, status: undefined, freightMode: undefined, sortBy: "shipment_date", sortDir: "desc" });
   });
 
   it("keeps the previous page's data on screen (not a blank loading state) while fetching the next page", async () => {
@@ -127,18 +133,18 @@ describe("ShipmentsTable", () => {
       .mockImplementationOnce(() => nextPagePromise);
 
     render(<ShipmentsTable refreshKey={0} />);
-    await waitFor(() => expect(screen.getByText("Page 1 of 3")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("1–50 of 120")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByText("Next"));
+    fireEvent.click(screen.getByLabelText("Next page"));
 
     // The page label updates immediately (it's local UI state), but the fetch
     // for page 2's rows is still pending — the table should still show page 1's
     // stale rows (dimmed) rather than the full-page "Loading shipments…" text
     // (which would unmount the table and cause a layout jump).
-    await waitFor(() => expect(screen.getByText("Page 2 of 3")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("51–100 of 120")).toBeInTheDocument());
     expect(screen.getByText("Customer 1")).toBeInTheDocument();
     expect(screen.queryByText("Loading shipments…")).not.toBeInTheDocument();
-    expect(screen.getByText("Next")).toBeDisabled();
+    expect(screen.getByLabelText("Next page")).toBeDisabled();
     expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument();
 
     resolveNextPage(pageOf(120, 50, 50));
@@ -148,10 +154,10 @@ describe("ShipmentsTable", () => {
 
   it("debounces the search box and sends it as the q param, resetting to page 0", async () => {
     render(<ShipmentsTable refreshKey={0} />);
-    await waitFor(() => expect(screen.getByText("Page 1 of 3")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("1–50 of 120")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByText("Next"));
-    await waitFor(() => expect(screen.getByText("Page 2 of 3")).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText("Next page"));
+    await waitFor(() => expect(screen.getByText("51–100 of 120")).toBeInTheDocument());
     fetchShipmentsMock.mockClear();
 
     fireEvent.change(screen.getByPlaceholderText("Search customer, port, cargo, container…"), {
@@ -166,17 +172,18 @@ describe("ShipmentsTable", () => {
         expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, {
           q: "acme",
           status: undefined,
+          freightMode: undefined,
           sortBy: "shipment_date",
           sortDir: "desc",
         }),
       { timeout: 1000 }
     );
-    expect(screen.getByText("Page 1 of 3")).toBeInTheDocument();
+    expect(screen.getByText("1–50 of 120")).toBeInTheDocument();
   });
 
   it("toggles a status chip on and off as the status filter param", async () => {
     render(<ShipmentsTable refreshKey={0} />);
-    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("120 records")).toBeInTheDocument());
     fetchShipmentsMock.mockClear();
 
     fireEvent.click(screen.getByRole("button", { name: /^booked/ }));
@@ -184,6 +191,7 @@ describe("ShipmentsTable", () => {
       expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, {
         q: undefined,
         status: ["booked"],
+        freightMode: undefined,
         sortBy: "shipment_date",
         sortDir: "desc",
       })
@@ -195,6 +203,7 @@ describe("ShipmentsTable", () => {
       expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, {
         q: undefined,
         status: undefined,
+        freightMode: undefined,
         sortBy: "shipment_date",
         sortDir: "desc",
       })
@@ -203,7 +212,7 @@ describe("ShipmentsTable", () => {
 
   it("sorts by a column on click and reverses direction on a second click", async () => {
     render(<ShipmentsTable refreshKey={0} />);
-    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("120 records")).toBeInTheDocument());
     fetchShipmentsMock.mockClear();
 
     fireEvent.click(screen.getByText("Freight cost"));
@@ -211,6 +220,7 @@ describe("ShipmentsTable", () => {
       expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, {
         q: undefined,
         status: undefined,
+        freightMode: undefined,
         sortBy: "cost",
         sortDir: "asc",
       })
@@ -222,6 +232,7 @@ describe("ShipmentsTable", () => {
       expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, {
         q: undefined,
         status: undefined,
+        freightMode: undefined,
         sortBy: "cost",
         sortDir: "desc",
       })
@@ -230,7 +241,7 @@ describe("ShipmentsTable", () => {
 
   it("changes a row's status inline and refetches", async () => {
     render(<ShipmentsTable refreshKey={0} />);
-    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("120 records")).toBeInTheDocument());
     fetchShipmentsMock.mockClear();
 
     fireEvent.change(screen.getByLabelText("Status for shipment 1"), { target: { value: "booked" } });
@@ -242,7 +253,7 @@ describe("ShipmentsTable", () => {
   it("deletes a row after confirmation and refetches", async () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<ShipmentsTable refreshKey={0} />);
-    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("120 records")).toBeInTheDocument());
     fetchShipmentsMock.mockClear();
 
     fireEvent.click(screen.getByLabelText("Delete shipment 1"));
@@ -255,7 +266,7 @@ describe("ShipmentsTable", () => {
   it("does not delete when the confirmation is declined", async () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     render(<ShipmentsTable refreshKey={0} />);
-    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("120 records")).toBeInTheDocument());
 
     fireEvent.click(screen.getByLabelText("Delete shipment 1"));
 
@@ -265,7 +276,7 @@ describe("ShipmentsTable", () => {
 
   it("tracks row selection and shows a selection count, staying visible at 0", async () => {
     render(<ShipmentsTable refreshKey={0} />);
-    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("120 records")).toBeInTheDocument());
 
     expect(screen.getByText("0 selected")).toBeInTheDocument();
 
@@ -278,7 +289,7 @@ describe("ShipmentsTable", () => {
 
   it("selects all rows on the page via the header checkbox", async () => {
     render(<ShipmentsTable refreshKey={0} />);
-    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("120 records")).toBeInTheDocument());
 
     fireEvent.click(screen.getByLabelText("Select all on page"));
     expect(await screen.findByText("50 selected")).toBeInTheDocument();
@@ -290,16 +301,18 @@ describe("ShipmentsTable", () => {
   it("hides selection, inline status editing, and delete for viewers", async () => {
     useWorkspaceMock.mockReturnValue({ currentWorkspace: { ...WORKSPACE, role: "viewer" } });
     render(<ShipmentsTable refreshKey={0} />);
-    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("120 records")).toBeInTheDocument());
 
     expect(screen.queryByLabelText("Select all on page")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Delete shipment 1")).not.toBeInTheDocument();
-    expect(screen.queryAllByRole("combobox")).toHaveLength(0);
+    // The one remaining combobox is the rows-per-page selector — a view
+    // preference, not an edit action, so it stays available to viewers.
+    expect(screen.queryAllByRole("combobox")).toHaveLength(1);
   });
 
   it("bulk-updates the status of the selected rows and clears selection on success", async () => {
     render(<ShipmentsTable refreshKey={0} />);
-    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("120 records")).toBeInTheDocument());
 
     fireEvent.click(screen.getByLabelText("Select shipment 1"));
     fireEvent.click(screen.getByLabelText("Select shipment 2"));
@@ -314,7 +327,7 @@ describe("ShipmentsTable", () => {
 
   it("bulk-updates dates for the selected rows, and the button stays disabled with no date set", async () => {
     render(<ShipmentsTable refreshKey={0} />);
-    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("120 records")).toBeInTheDocument());
 
     fireEvent.click(screen.getByLabelText("Select shipment 1"));
     await screen.findByText("1 selected");
@@ -335,7 +348,7 @@ describe("ShipmentsTable", () => {
   it("bulk-deletes the selected rows after confirmation", async () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<ShipmentsTable refreshKey={0} />);
-    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("120 records")).toBeInTheDocument());
 
     fireEvent.click(screen.getByLabelText("Select shipment 1"));
     await screen.findByText("1 selected");
@@ -350,7 +363,7 @@ describe("ShipmentsTable", () => {
   it("does not bulk-delete when the confirmation is declined", async () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     render(<ShipmentsTable refreshKey={0} />);
-    await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("120 records")).toBeInTheDocument());
 
     fireEvent.click(screen.getByLabelText("Select shipment 1"));
     await screen.findByText("1 selected");

@@ -129,7 +129,9 @@ async def _seed_shipment(
     *,
     customer_id=None,
     status_=ShipmentStatus.inquiry,
+    freight_mode_=FreightMode.FCL,
     freight_cost=None,
+    currency="USD",
     cargo_description=None,
     origin_port=None,
     destination_port=None,
@@ -141,8 +143,8 @@ async def _seed_shipment(
             workspace_id=workspace_id,
             created_by=user_id,
             customer_id=customer_id,
-            freight_mode=FreightMode.FCL,
-            currency="USD",
+            freight_mode=freight_mode_,
+            currency=currency,
             status=status_,
             freight_cost=Decimal(str(freight_cost)) if freight_cost is not None else None,
             cargo_description=cargo_description,
@@ -239,6 +241,84 @@ async def test_list_shipments_rejects_invalid_status_filter(client):
     token = await _register(client, "filter2@example.com")
     resp = await client.get("/shipments?status=not-a-status", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 400
+
+
+async def test_list_shipments_filters_by_freight_mode(client):
+    token = await _register(client, "filter3@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    me = await client.get("/auth/me", headers=headers)
+    user_id = me.json()["id"]
+    await _seed_shipment(client, workspace_id, user_id, freight_mode_=FreightMode.AIR)
+    await _seed_shipment(client, workspace_id, user_id, freight_mode_=FreightMode.FCL)
+    await _seed_shipment(client, workspace_id, user_id, freight_mode_=FreightMode.ROAD)
+
+    resp = await client.get("/shipments?freight_mode=AIR&freight_mode=ROAD", headers=headers)
+    body = resp.json()
+    assert body["total"] == 2
+    assert {item["freight_mode"] for item in body["items"]} == {"AIR", "ROAD"}
+
+
+async def test_list_shipments_rejects_invalid_freight_mode_filter(client):
+    token = await _register(client, "filter4@example.com")
+    resp = await client.get("/shipments?freight_mode=not-a-mode", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 400
+
+
+async def test_summary_sums_freight_cost_per_currency(client):
+    token = await _register(client, "summary1@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    me = await client.get("/auth/me", headers=headers)
+    user_id = me.json()["id"]
+    await _seed_shipment(client, workspace_id, user_id, freight_cost=100, currency="USD")
+    await _seed_shipment(client, workspace_id, user_id, freight_cost=250.5, currency="USD")
+    await _seed_shipment(client, workspace_id, user_id, freight_cost=80, currency="EUR")
+    await _seed_shipment(client, workspace_id, user_id, freight_cost=None, currency="USD")
+
+    resp = await client.get(f"/shipments/summary?workspace_id={workspace_id}", headers=headers)
+    assert resp.status_code == 200
+    amounts = {row["currency"]: row["amount"] for row in resp.json()["total_freight_cost"]}
+    assert amounts == {"USD": 350.5, "EUR": 80}
+
+
+async def test_summary_respects_status_and_freight_mode_filters(client):
+    token = await _register(client, "summary2@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    me = await client.get("/auth/me", headers=headers)
+    user_id = me.json()["id"]
+    await _seed_shipment(
+        client, workspace_id, user_id, status_=ShipmentStatus.booked, freight_mode_=FreightMode.AIR, freight_cost=100
+    )
+    await _seed_shipment(
+        client,
+        workspace_id,
+        user_id,
+        status_=ShipmentStatus.delivered,
+        freight_mode_=FreightMode.FCL,
+        freight_cost=900,
+    )
+
+    resp = await client.get(f"/shipments/summary?workspace_id={workspace_id}&status=booked", headers=headers)
+    amounts = {row["currency"]: row["amount"] for row in resp.json()["total_freight_cost"]}
+    assert amounts == {"USD": 100}
+
+    resp = await client.get(f"/shipments/summary?workspace_id={workspace_id}&freight_mode=FCL", headers=headers)
+    amounts = {row["currency"]: row["amount"] for row in resp.json()["total_freight_cost"]}
+    assert amounts == {"USD": 900}
+
+
+async def test_summary_404s_for_workspace_caller_is_not_a_member_of(client):
+    token = await _register(client, "summary3@example.com")
+    other_token = await _register(client, "summary4@example.com")
+    other_workspace_id = await _workspace_id(client, other_token)
+
+    resp = await client.get(
+        f"/shipments/summary?workspace_id={other_workspace_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 404
 
 
 async def test_list_shipments_sorts_by_cost_ascending(client):

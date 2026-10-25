@@ -22,11 +22,13 @@ from app.schemas import (
     CreateShipmentRequest,
     CreateTrackingEventRequest,
     GenerateMockDataResponse,
+    MoneyAmount,
     QuoteOut,
     ShipmentDetailOut,
     ShipmentListOut,
     ShipmentOut,
     ShipmentStatusCountOut,
+    ShipmentSummaryOut,
     TrackingEventOut,
     UpdateShipmentStatusRequest,
 )
@@ -64,6 +66,45 @@ SORT_COLUMNS = {
 }
 
 
+def _parse_enum_list(raw: list[str] | None, enum_cls: type, label: str) -> list:
+    if not raw:
+        return []
+    try:
+        return [enum_cls(v) for v in raw]
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid {label} value")
+
+
+def _scope_shipments(
+    stmt,
+    *,
+    workspace_id: int,
+    statuses: list[ShipmentStatus],
+    freight_modes: list[FreightMode],
+    q: str | None,
+    needs_customer_join: bool,
+):
+    stmt = stmt.where(Shipment.workspace_id == workspace_id)
+    if needs_customer_join:
+        stmt = stmt.outerjoin(Customer, Customer.id == Shipment.customer_id)
+    if statuses:
+        stmt = stmt.where(Shipment.status.in_(statuses))
+    if freight_modes:
+        stmt = stmt.where(Shipment.freight_mode.in_(freight_modes))
+    if q:
+        pattern = f"%{q}%"
+        stmt = stmt.where(
+            or_(
+                Customer.name.ilike(pattern),
+                Shipment.origin_port.ilike(pattern),
+                Shipment.destination_port.ilike(pattern),
+                Shipment.cargo_description.ilike(pattern),
+                Shipment.container_no.ilike(pattern),
+            )
+        )
+    return stmt
+
+
 @router.get("", response_model=ShipmentListOut)
 async def list_shipments(
     workspace_id: int | None = None,
@@ -71,6 +112,7 @@ async def list_shipments(
     offset: int = Query(default=0, ge=0),
     q: str | None = Query(default=None, max_length=255),
     status_filter: list[str] | None = Query(default=None, alias="status"),
+    freight_mode_filter: list[str] | None = Query(default=None, alias="freight_mode"),
     sort_by: str = Query(default="shipment_date", pattern="^(shipment_date|customer|cost|status)$"),
     sort_dir: str = Query(default="desc", pattern="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
@@ -79,12 +121,8 @@ async def list_shipments(
     # any active member (owner/editor/viewer) can read
     workspace, _role = await resolve_workspace_membership(db, current_user, workspace_id)
 
-    statuses: list[ShipmentStatus] = []
-    if status_filter:
-        try:
-            statuses = [ShipmentStatus(s) for s in status_filter]
-        except ValueError:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid status value")
+    statuses = _parse_enum_list(status_filter, ShipmentStatus, "status")
+    freight_modes = _parse_enum_list(freight_mode_filter, FreightMode, "freight_mode")
 
     # Sorting/searching by customer name needs the join; other sort/search
     # combinations don't, so skip it then — a plain WHERE workspace_id=? scan
@@ -92,23 +130,14 @@ async def list_shipments(
     needs_customer_join = bool(q) or sort_by == "customer"
 
     def _scope(stmt):
-        stmt = stmt.where(Shipment.workspace_id == workspace.id)
-        if needs_customer_join:
-            stmt = stmt.outerjoin(Customer, Customer.id == Shipment.customer_id)
-        if statuses:
-            stmt = stmt.where(Shipment.status.in_(statuses))
-        if q:
-            pattern = f"%{q}%"
-            stmt = stmt.where(
-                or_(
-                    Customer.name.ilike(pattern),
-                    Shipment.origin_port.ilike(pattern),
-                    Shipment.destination_port.ilike(pattern),
-                    Shipment.cargo_description.ilike(pattern),
-                    Shipment.container_no.ilike(pattern),
-                )
-            )
-        return stmt
+        return _scope_shipments(
+            stmt,
+            workspace_id=workspace.id,
+            statuses=statuses,
+            freight_modes=freight_modes,
+            q=q,
+            needs_customer_join=needs_customer_join,
+        )
 
     total = await db.scalar(_scope(select(func.count()).select_from(Shipment)))
 
@@ -154,6 +183,39 @@ async def get_status_counts(
         )
     ).all()
     return [ShipmentStatusCountOut(status=status_val.value, count=count) for status_val, count in rows]
+
+
+@router.get("/summary", response_model=ShipmentSummaryOut)
+async def get_shipments_summary(
+    workspace_id: int | None = None,
+    q: str | None = Query(default=None, max_length=255),
+    status_filter: list[str] | None = Query(default=None, alias="status"),
+    freight_mode_filter: list[str] | None = Query(default=None, alias="freight_mode"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Aggregate freight cost (summed per currency, since costs in different
+    currencies can't be blended into one number) for the table's summary row.
+    Takes the same filter params as the list endpoint — unlike status-counts,
+    this total is meant to reflect what the user is currently looking at —
+    but never pagination, since it's a total over every matching row."""
+    workspace, _role = await resolve_workspace_membership(db, current_user, workspace_id)
+
+    statuses = _parse_enum_list(status_filter, ShipmentStatus, "status")
+    freight_modes = _parse_enum_list(freight_mode_filter, FreightMode, "freight_mode")
+    needs_customer_join = bool(q)
+
+    stmt = _scope_shipments(
+        select(Shipment.currency, func.sum(Shipment.freight_cost)).group_by(Shipment.currency),
+        workspace_id=workspace.id,
+        statuses=statuses,
+        freight_modes=freight_modes,
+        q=q,
+        needs_customer_join=needs_customer_join,
+    )
+    rows = (await db.execute(stmt)).all()
+    amounts = [MoneyAmount(currency=currency, amount=float(total)) for currency, total in rows if total is not None]
+    return ShipmentSummaryOut(total_freight_cost=amounts)
 
 
 @router.post("", response_model=ShipmentOut, status_code=status.HTTP_201_CREATED)
