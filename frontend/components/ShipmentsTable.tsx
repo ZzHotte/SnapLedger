@@ -32,18 +32,44 @@ const STATUS_STYLES: Record<string, string> = {
   cancelled: "bg-red-100 text-red-700",
 };
 
+// A slightly deeper step of each STATUS_STYLES hue, for the small dot — a
+// solid 100-step background is too light to read as a dot on its own.
+const STATUS_DOT: Record<string, string> = {
+  inquiry: "bg-gray-400",
+  quoted: "bg-blue-500",
+  booked: "bg-indigo-500",
+  in_transit: "bg-amber-500",
+  arrived: "bg-teal-500",
+  customs: "bg-purple-500",
+  delivered: "bg-green-500",
+  cancelled: "bg-red-500",
+};
+
 function statusLabel(status: string): string {
   return status.replace("_", " ");
+}
+
+function StatusDot({ status, className = "" }: { status: string; className?: string }) {
+  return <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT[status] ?? "bg-gray-400"} ${className}`} />;
 }
 
 function StatusBadge({ status }: { status: string }) {
   return (
     <span
-      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
+      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
         STATUS_STYLES[status] ?? "bg-gray-100 text-gray-700"
       }`}
     >
+      <StatusDot status={status} />
       {statusLabel(status)}
+    </span>
+  );
+}
+
+function Avatar({ name }: { name: string }) {
+  return (
+    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[11px] font-medium text-gray-600">
+      {name.slice(0, 1).toUpperCase()}
     </span>
   );
 }
@@ -323,6 +349,11 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
 
   return (
     <div className="w-full overflow-hidden rounded-lg border border-gray-200 bg-white">
+      <div className="flex items-baseline gap-2 border-b border-gray-100 px-4 py-3.5">
+        <h2 className="text-[15px] font-semibold text-gray-900">Shipments</h2>
+        <span className="text-[13px] text-gray-400">{total.toLocaleString()} records</span>
+      </div>
+
       <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 p-4">
         <input
           type="search"
@@ -336,12 +367,13 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
             <button
               key={s}
               onClick={() => toggleStatus(s)}
-              className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize transition-colors ${
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium capitalize transition-colors ${
                 statusFilter.includes(s)
                   ? "bg-black text-white"
                   : "border border-gray-300 text-gray-600 hover:border-gray-400 hover:bg-gray-50"
               }`}
             >
+              <StatusDot status={s} className={statusFilter.includes(s) ? "bg-white" : ""} />
               {statusLabel(s)}
             </button>
           ))}
@@ -488,7 +520,12 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
                           {s.shipment_date}
                         </Link>
                       </td>
-                      <td className="py-2.5 pr-4">{s.customer_name || "—"}</td>
+                      <td className="py-2.5 pr-4">
+                        <span className="flex items-center gap-2.5">
+                          <Avatar name={s.customer_name || "—"} />
+                          {s.customer_name || "—"}
+                        </span>
+                      </td>
                       <td className="py-2.5 pr-4 whitespace-nowrap">
                         {s.origin_port || "—"} → {s.destination_port || "—"}
                       </td>
@@ -505,7 +542,7 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
                           <StatusBadge status={s.status} />
                         )}
                       </td>
-                      <td className="py-2.5 pr-4 text-right whitespace-nowrap tabular-nums">
+                      <td className="py-2.5 pr-4 text-right font-medium whitespace-nowrap text-gray-900 tabular-nums">
                         {s.freight_cost != null ? `${s.freight_cost.toFixed(2)} ${s.currency}` : "—"}
                       </td>
                       {canEdit && (

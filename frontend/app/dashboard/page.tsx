@@ -62,7 +62,7 @@ export default function ShipmentsPage() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 p-6">
+    <main className="mx-auto flex w-full max-w-screen-2xl flex-1 flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Welcome, {user.name || user.email}</h1>
         <div className="flex items-center gap-2">
