@@ -207,6 +207,34 @@ async def test_list_shipments_filters_by_status(client):
     assert {item["status"] for item in body["items"]} == {"booked", "delivered"}
 
 
+async def test_status_counts_groups_by_status_workspace_wide(client):
+    token = await _register(client, "statuscounts1@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    me = await client.get("/auth/me", headers=headers)
+    user_id = me.json()["id"]
+    await _seed_shipment(client, workspace_id, user_id, status_=ShipmentStatus.booked)
+    await _seed_shipment(client, workspace_id, user_id, status_=ShipmentStatus.booked)
+    await _seed_shipment(client, workspace_id, user_id, status_=ShipmentStatus.delivered)
+
+    resp = await client.get(f"/shipments/status-counts?workspace_id={workspace_id}", headers=headers)
+    assert resp.status_code == 200
+    counts = {row["status"]: row["count"] for row in resp.json()}
+    assert counts == {"booked": 2, "delivered": 1}
+
+
+async def test_status_counts_404s_for_workspace_caller_is_not_a_member_of(client):
+    token = await _register(client, "statuscounts2@example.com")
+    other_token = await _register(client, "statuscounts3@example.com")
+    other_workspace_id = await _workspace_id(client, other_token)
+
+    resp = await client.get(
+        f"/shipments/status-counts?workspace_id={other_workspace_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 404
+
+
 async def test_list_shipments_rejects_invalid_status_filter(client):
     token = await _register(client, "filter2@example.com")
     resp = await client.get("/shipments?status=not-a-status", headers={"Authorization": f"Bearer {token}"})

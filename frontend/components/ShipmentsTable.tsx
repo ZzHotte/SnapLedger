@@ -9,6 +9,7 @@ import {
   bulkUpdateShipmentStatus,
   deleteShipment,
   fetchShipments,
+  fetchShipmentStatusCounts,
   updateShipmentStatus,
   type Shipment,
   type ShipmentSortBy,
@@ -133,6 +134,7 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
   const canEdit = currentWorkspace?.role !== "viewer";
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [total, setTotal] = useState(0);
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [everLoaded, setEverLoaded] = useState(false);
@@ -222,6 +224,31 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
       cancelled = true;
     };
   }, [refreshKey, currentWorkspace, page, debouncedSearch, statusFilter, sortBy, sortDir, localRefresh]);
+
+  // Separate from the list fetch above — the filter chips' counts are a
+  // workspace-wide overview, not scoped to the current search/filter/page, so
+  // they only need to refetch when the underlying data actually changes, not
+  // on every keystroke or page turn.
+  useEffect(() => {
+    if (!currentWorkspace) return;
+    const workspaceId = currentWorkspace.id;
+    let cancelled = false;
+
+    fetchShipmentStatusCounts(workspaceId)
+      .then((rows) => {
+        if (cancelled) return;
+        const next: Record<string, number> = {};
+        for (const row of rows) next[row.status] = row.count;
+        setStatusCounts(next);
+      })
+      .catch(() => {
+        if (!cancelled) setStatusCounts({});
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentWorkspace, refreshKey, localRefresh]);
 
   async function handleRowStatusChange(shipmentId: number, nextStatus: string) {
     if (!currentWorkspace) return;
@@ -346,6 +373,7 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
   }
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const totalAllCounts = Object.values(statusCounts).reduce((sum, n) => sum + n, 0);
 
   return (
     <div className="w-full overflow-hidden rounded-lg border border-gray-200 bg-white">
@@ -362,7 +390,17 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
           placeholder="Search customer, port, cargo, container…"
           className="w-64 rounded-md border border-gray-300 px-3 py-1.5 text-sm transition-colors focus:border-gray-400 focus:outline-none"
         />
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            onClick={() => setStatusFilter([])}
+            className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+              statusFilter.length === 0
+                ? "bg-black text-white"
+                : "border border-gray-300 text-gray-600 hover:border-gray-400 hover:bg-gray-50"
+            }`}
+          >
+            All {totalAllCounts.toLocaleString()}
+          </button>
           {SHIPMENT_STATUSES.map((s) => (
             <button
               key={s}
@@ -374,17 +412,9 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
               }`}
             >
               <StatusDot status={s} className={statusFilter.includes(s) ? "bg-white" : ""} />
-              {statusLabel(s)}
+              {statusLabel(s)} {(statusCounts[s] ?? 0).toLocaleString()}
             </button>
           ))}
-          {statusFilter.length > 0 && (
-            <button
-              onClick={() => setStatusFilter([])}
-              className="px-2 py-1 text-xs text-gray-500 underline-offset-2 hover:underline"
-            >
-              Clear
-            </button>
-          )}
         </div>
       </div>
 

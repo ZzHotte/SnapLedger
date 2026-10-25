@@ -26,6 +26,7 @@ from app.schemas import (
     ShipmentDetailOut,
     ShipmentListOut,
     ShipmentOut,
+    ShipmentStatusCountOut,
     TrackingEventOut,
     UpdateShipmentStatusRequest,
 )
@@ -129,6 +130,30 @@ async def list_shipments(
     shipments = result.all()
 
     return ShipmentListOut(items=[_to_shipment_out(s) for s in shipments], total=total)
+
+
+@router.get("/status-counts", response_model=list[ShipmentStatusCountOut])
+async def get_status_counts(
+    workspace_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Counts for the status filter chips — workspace-wide, independent of the
+    list's own search/status-filter/pagination params. Re-querying this on
+    every keystroke of the search box would double request volume for little
+    benefit (the chips are a "what's out there" overview, not a live tally of
+    the current search); it only needs to change when shipment data actually
+    does, same as the list itself."""
+    workspace, _role = await resolve_workspace_membership(db, current_user, workspace_id)
+
+    rows = (
+        await db.execute(
+            select(Shipment.status, func.count())
+            .where(Shipment.workspace_id == workspace.id)
+            .group_by(Shipment.status)
+        )
+    ).all()
+    return [ShipmentStatusCountOut(status=status_val.value, count=count) for status_val, count in rows]
 
 
 @router.post("", response_model=ShipmentOut, status_code=status.HTTP_201_CREATED)

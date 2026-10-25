@@ -165,6 +165,11 @@ class ShipmentListOut(BaseModel):
     total: int
 
 
+class ShipmentStatusCountOut(BaseModel):
+    status: str
+    count: int
+
+
 class UpdateShipmentStatusRequest(BaseModel):
     status: str = Field(
         pattern="^(inquiry|quoted|booked|in_transit|arrived|customs|delivered|cancelled)$"

@@ -317,6 +317,15 @@ export function fetchShipments(
   return request<ShipmentListResult>(`/shipments?${search.toString()}`);
 }
 
+export interface ShipmentStatusCount {
+  status: string;
+  count: number;
+}
+
+export function fetchShipmentStatusCounts(workspaceId: number) {
+  return request<ShipmentStatusCount[]>(`/shipments/status-counts?workspace_id=${workspaceId}`);
+}
+
 export function generateMockData(workspaceId: number, count: number) {
   return request<{ created: number }>(`/shipments/mock-data?workspace_id=${workspaceId}&count=${count}`, {
     method: "POST",

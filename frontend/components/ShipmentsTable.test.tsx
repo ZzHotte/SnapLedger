@@ -6,6 +6,7 @@ import type { Shipment, ShipmentListResult, Workspace } from "@/lib/api";
 const {
   useWorkspaceMock,
   fetchShipmentsMock,
+  fetchShipmentStatusCountsMock,
   updateShipmentStatusMock,
   deleteShipmentMock,
   bulkUpdateShipmentStatusMock,
@@ -14,6 +15,7 @@ const {
 } = vi.hoisted(() => ({
   useWorkspaceMock: vi.fn(),
   fetchShipmentsMock: vi.fn(),
+  fetchShipmentStatusCountsMock: vi.fn(),
   updateShipmentStatusMock: vi.fn(),
   deleteShipmentMock: vi.fn(),
   bulkUpdateShipmentStatusMock: vi.fn(),
@@ -27,6 +29,7 @@ vi.mock("@/lib/api", async () => {
   return {
     ...actual,
     fetchShipments: fetchShipmentsMock,
+    fetchShipmentStatusCounts: fetchShipmentStatusCountsMock,
     updateShipmentStatus: updateShipmentStatusMock,
     deleteShipment: deleteShipmentMock,
     bulkUpdateShipmentStatus: bulkUpdateShipmentStatusMock,
@@ -68,6 +71,7 @@ function pageOf(total: number, offset: number, limit: number): ShipmentListResul
 beforeEach(() => {
   useWorkspaceMock.mockReset();
   fetchShipmentsMock.mockReset();
+  fetchShipmentStatusCountsMock.mockReset();
   updateShipmentStatusMock.mockReset();
   deleteShipmentMock.mockReset();
   bulkUpdateShipmentStatusMock.mockReset();
@@ -77,6 +81,7 @@ beforeEach(() => {
   fetchShipmentsMock.mockImplementation(async (_workspaceId: number, limit: number, offset: number) =>
     pageOf(120, offset, limit)
   );
+  fetchShipmentStatusCountsMock.mockResolvedValue([{ status: "inquiry", count: 120 }]);
   updateShipmentStatusMock.mockResolvedValue(undefined);
   deleteShipmentMock.mockResolvedValue(undefined);
   bulkUpdateShipmentStatusMock.mockResolvedValue({ updated: 0 });
@@ -174,7 +179,7 @@ describe("ShipmentsTable", () => {
     await waitFor(() => expect(screen.getByText("120 shipments")).toBeInTheDocument());
     fetchShipmentsMock.mockClear();
 
-    fireEvent.click(screen.getByRole("button", { name: "booked" }));
+    fireEvent.click(screen.getByRole("button", { name: /^booked/ }));
     await waitFor(() =>
       expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, {
         q: undefined,
@@ -185,7 +190,7 @@ describe("ShipmentsTable", () => {
     );
 
     fetchShipmentsMock.mockClear();
-    fireEvent.click(screen.getByRole("button", { name: "booked" }));
+    fireEvent.click(screen.getByRole("button", { name: /^booked/ }));
     await waitFor(() =>
       expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, {
         q: undefined,
