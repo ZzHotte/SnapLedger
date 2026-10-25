@@ -140,7 +140,7 @@ export default function DashboardPage() {
   if (!user) {
     return (
       <main className="flex flex-1 flex-col items-center justify-center gap-6">
-        <h1 className="text-2xl font-semibold">SnapLedger Freight CRM</h1>
+        <h1 className="text-2xl font-semibold">Shiplog Freight CRM</h1>
         <div className="flex gap-3">
           <ButtonLink href="/login" variant="primary">
             Log in

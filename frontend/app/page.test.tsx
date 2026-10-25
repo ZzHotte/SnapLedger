@@ -93,7 +93,7 @@ describe("DashboardPage", () => {
     // there's no logged-in user, which is what actually stops the fetch effect.
     useWorkspaceMock.mockReturnValue({ currentWorkspace: null });
     render(<DashboardPage />);
-    expect(screen.getByText("SnapLedger Freight CRM")).toBeInTheDocument();
+    expect(screen.getByText("Shiplog Freight CRM")).toBeInTheDocument();
     expect(fetchDashboardSummaryMock).not.toHaveBeenCalled();
   });
 

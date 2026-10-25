@@ -48,7 +48,7 @@ export default function ShipmentsPage() {
   if (!user) {
     return (
       <main className="flex flex-1 flex-col items-center justify-center gap-6">
-        <h1 className="text-2xl font-semibold">SnapLedger Freight CRM</h1>
+        <h1 className="text-2xl font-semibold">Shiplog Freight CRM</h1>
         <div className="flex gap-3">
           <Link href="/login" className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white">
             Log in

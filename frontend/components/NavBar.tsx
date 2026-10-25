@@ -38,7 +38,7 @@ export default function NavBar() {
   return (
     <header className="flex items-center justify-between gap-4 border-b border-gray-200 bg-white px-6 py-3">
       <div className="flex items-center gap-6">
-        <Link href="/" aria-label="SnapLedger home">
+        <Link href="/" aria-label="Shiplog home">
           <Logo />
         </Link>
 

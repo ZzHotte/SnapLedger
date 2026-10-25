@@ -28,7 +28,7 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
       <div className="w-full max-w-sm space-y-6">
-        <h1 className="text-2xl font-semibold">Log in to SnapLedger</h1>
+        <h1 className="text-2xl font-semibold">Log in to Shiplog</h1>
 
         <a
           href={googleLoginUrl()}

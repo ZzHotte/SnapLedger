@@ -44,10 +44,10 @@ const APPLE_SPLASH_SCREENS: Array<{ file: string; media: string }> = [
 ];
 
 export const metadata: Metadata = {
-  title: "SnapLedger - Freight Forwarding CRM",
+  title: "Shiplog - Freight Forwarding CRM",
   description: "Snap a shipping document, get it auto-logged. Track shipments, quotes, and customers, shared with up to 5 teammates.",
   appleWebApp: {
-    title: "SnapLedger",
+    title: "Shiplog",
     statusBarStyle: "default",
     startupImage: APPLE_SPLASH_SCREENS.map(({ file, media }) => ({
       url: `/splash/${file}.png`,

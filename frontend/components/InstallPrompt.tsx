@@ -59,8 +59,8 @@ export default function InstallPrompt() {
       <div className="mx-auto flex max-w-2xl items-center gap-3">
         <span className="text-sm text-gray-700">
           {variant === "ios"
-            ? "把 SnapLedger 装到主屏幕：点击分享图标 → “添加到主屏幕”"
-            : "把 SnapLedger 装到桌面，像 App 一样打开"}
+            ? "把 Shiplog 装到主屏幕：点击分享图标 → “添加到主屏幕”"
+            : "把 Shiplog 装到桌面，像 App 一样打开"}
         </span>
         <div className="ml-auto flex shrink-0 items-center gap-2">
           {variant === "android" && (
