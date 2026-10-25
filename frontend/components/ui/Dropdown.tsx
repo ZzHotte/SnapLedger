@@ -53,7 +53,7 @@ export default function Dropdown<T extends string | number>({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={ariaLabel}
-        className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 bg-white py-1.5 pr-2.5 pl-3.5 text-sm font-medium text-gray-900 transition-colors hover:border-gray-400"
+        className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 bg-white py-1 pr-2.5 pl-3 text-[13px] font-medium text-gray-900 transition-colors hover:border-gray-400"
       >
         {current?.label}
         <svg
@@ -90,7 +90,7 @@ export default function Dropdown<T extends string | number>({
                   onChange(opt.value);
                   setOpen(false);
                 }}
-                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[13px] transition-colors ${
                   selected ? "bg-gray-100 font-medium text-gray-900" : "text-gray-700 hover:bg-gray-50"
                 }`}
               >
