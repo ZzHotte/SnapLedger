@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useWorkspace } from "@/lib/workspace-context";
 import Logo from "@/components/ui/Logo";
 import { Button } from "@/components/ui/Button";
+import Dropdown from "@/components/ui/Dropdown";
 
 function NavTab({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
   return (
@@ -56,19 +57,16 @@ export default function NavBar() {
 
       <div className="flex items-center gap-3">
         {currentWorkspace && (
-          <select
+          <Dropdown
             value={currentWorkspace.id}
-            onChange={(e) => selectWorkspace(Number(e.target.value))}
-            className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-700"
+            onChange={selectWorkspace}
             aria-label="Switch workspace"
-          >
-            {workspaces.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-                {w.role !== "owner" ? ` (${w.role})` : ""}
-              </option>
-            ))}
-          </select>
+            options={workspaces.map((w) => ({
+              value: w.id,
+              label: w.name,
+              meta: w.role !== "owner" ? w.role : undefined,
+            }))}
+          />
         )}
         {currentWorkspace && (
           <Link
