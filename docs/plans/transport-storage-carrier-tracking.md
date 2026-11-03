@@ -146,6 +146,51 @@
 
 ---
 
+## 4. Shipments 表格与详情页
+
+### 表格列
+
+默认显示（按顺序）：Customer · Route · ETD · ETA · Mode · Carrier · Status · Freight cost。
+View 菜单可选：Job date（原 Date 列，即 `shipment_date`，仍用于 Dashboard 按月统计）、以及第二期加入的
+Job No.、Container / B/L no.、Shipper / Consignee、Weight / CBM、Vessel / Voyage、Profit、Operator。
+
+- 默认按 ETD 倒序，未排期（Inquiry）的排在最后
+- ETD/ETA 临近 7 天内显示 "in Xd"，过期但还没到对应节点显示红色 "Xd late"
+- 点击整行进入详情页；去掉每行 Delete，删除走批量栏或详情页 ⋯ 菜单
+
+### 详情页
+
+页头：客户、Shipment #、航线 + 运输方式、状态下拉、⋯（Delete）；下方是状态进度条。
+左栏：Route & schedule · Cargo · Containers · Parties · References · Financials；
+右栏：Tracking 时间线 · Documents · Activity · 关联的 Transport 行程 / Storage 入库单。
+
+### 第一期
+
+- [x] 后端：`etd` 字段 + 迁移 `e1f2a3b4c5d6`（含 `(workspace_id, etd)` 索引）、ETD/ETA 排序（空值置后）、ETA 不早于 ETD 校验、批量设置 ETD
+- [x] Mock 数据生成 ETD/ETA（Inquiry 无排期，ETA 按运输方式加航程天数）
+- [x] 表格：新列顺序、Job date 默认隐藏、去掉每行 Delete、整行可点、ETD/ETA 提示、批量 "Set dates" 改为 ETD/ETA
+- [x] 详情页：按上述布局重排（用现有字段），Delete 移入 ⋯ 菜单
+- [x] 在 Neon 上执行迁移（2026-11-03）
+- [ ] 推送上线（后端先于前端）
+- [ ] 重新生成 Mock 数据（旧数据没有 ETD/ETA）
+
+### 第二期
+
+- [ ] Job No.（按 workspace 自动生成，如 `SL-2611-0042`）
+- [ ] Parties：Shipper / Consignee / Notify party（文档 AI 识别结果写入 shipment）
+- [ ] References：MBL / HBL / Booking no. / 客户 PO / Incoterms
+- [ ] Containers：`shipment_containers` 表（柜号、柜型、封条号），表格 Mode 列显示 `FCL · 2×40HQ`
+- [ ] ATD / ATA、船名航次
+- [ ] Track 按钮：跳到船司查询并带上柜号
+
+### 第三期
+
+- [ ] Financials：费用明细（成本 / 售价）、利润和利润率
+- [ ] Documents：多附件（B/L、发票、装箱单、报关单）
+- [ ] Activity：操作记录与备注
+
+---
+
 ## 决策记录
 
 | 日期 | 决策 | 原因 |
@@ -153,7 +198,9 @@
 | 2026-11-03 | 船司查询不以爬官网为主方案 | 条款禁止 + 反爬防护 + 结构常变，商用风险高 |
 | 2026-11-03 | Transport MVP 用轮询而非 WebSocket | 后端跑在 Vercel serverless |
 | 2026-11-03 | 库存用只追加流水 + 汇总缓存 | 每笔库存变动可追溯 |
+| 2026-11-03 | Shipments 表格不删 `shipment_date`，改名 Job date 默认隐藏 | 它驱动 Dashboard 按月统计和现有索引 |
 
 ## 进度日志
 
 - 2026-11-03：三个模块的前端骨架完成并合并到 main（`6f36984`）。
+- 2026-11-03：Shipments 第一期（ETD、表格列、详情页）代码完成，待在 Neon 执行迁移后上线。
