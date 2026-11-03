@@ -51,8 +51,15 @@ export default function NavBar() {
     { href: "/", label: "Dashboard", requiresWorkspace: true },
     { href: "/dashboard", label: "Shipments", requiresWorkspace: true },
     { href: "/customers", label: "Customers", requiresWorkspace: true },
+    { href: "/transport", label: "Transport", requiresWorkspace: true },
+    { href: "/storage", label: "Storage", requiresWorkspace: true },
     { href: "/market-data", label: "Market Data", requiresWorkspace: false },
   ];
+
+  // Sections with sub-routes (e.g. /transport/driver) keep their tab lit;
+  // "/" and "/dashboard" stay exact so they don't swallow every route.
+  const isActive = (href: string) =>
+    href === "/" || href === "/dashboard" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 
   const membersHref = currentWorkspace ? `/workspaces/${currentWorkspace.id}/members` : null;
 
@@ -68,7 +75,7 @@ export default function NavBar() {
             {navItems.map(
               (item) =>
                 (!item.requiresWorkspace || currentWorkspace) && (
-                  <NavTab key={item.href} href={item.href} active={pathname === item.href}>
+                  <NavTab key={item.href} href={item.href} active={isActive(item.href)}>
                     {item.label}
                   </NavTab>
                 )
