@@ -96,6 +96,32 @@ beforeEach(() => {
 });
 
 describe("ShipmentsTable", () => {
+  it("keeps the table header and controls for an empty workspace", async () => {
+    fetchShipmentsMock.mockResolvedValue(pageOf(0, 0, 50));
+    fetchShipmentStatusCountsMock.mockResolvedValue([]);
+    render(<ShipmentsTable refreshKey={0} />);
+
+    expect(await screen.findByText("No shipments yet")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Customer/ })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Search/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Next page")).not.toBeInTheDocument();
+  });
+
+  it("keeps the filters on screen when they match nothing, and clears them on request", async () => {
+    render(<ShipmentsTable refreshKey={0} />);
+    await waitFor(() => expect(screen.getByText("120 records")).toBeInTheDocument());
+
+    fetchShipmentsMock.mockResolvedValue(pageOf(0, 0, 50));
+    fireEvent.click(screen.getByRole("button", { name: /^booked/ }));
+    expect(await screen.findByText("No shipments match these filters")).toBeInTheDocument();
+
+    fetchShipmentsMock.mockImplementation(async (_w: number, limit: number, offset: number) => pageOf(120, offset, limit));
+    fireEvent.click(screen.getByText("Clear filters"));
+    await waitFor(() =>
+      expect(fetchShipmentsMock).toHaveBeenLastCalledWith(1, 50, 0, expect.objectContaining({ status: undefined }))
+    );
+  });
+
   it("fetches page 0 on mount", async () => {
     render(<ShipmentsTable refreshKey={0} />);
 

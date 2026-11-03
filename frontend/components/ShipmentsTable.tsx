@@ -497,7 +497,14 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
     });
   }
 
-  const hasFilters = debouncedSearch !== "" || statusFilter.length > 0;
+  const hasFilters = debouncedSearch !== "" || statusFilter.length > 0 || freightModeFilter.length > 0;
+
+  function clearFilters() {
+    setSearchInput("");
+    setDebouncedSearch("");
+    setStatusFilter([]);
+    setFreightModeFilter([]);
+  }
 
   if (loading && !everLoaded) {
     return <p className="text-sm text-gray-500">Loading shipments…</p>;
@@ -505,10 +512,6 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
 
   if (error && !everLoaded) {
     return <p className="text-sm text-red-600">{error}</p>;
-  }
-
-  if (everLoaded && total === 0 && !loading && !hasFilters) {
-    return <p className="text-sm text-gray-500">No shipments yet — upload a shipping document to get started.</p>;
   }
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -859,151 +862,174 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
 
       {rowError && <p className="px-4 pt-3 text-sm text-red-600">{rowError}</p>}
 
-      {everLoaded && total === 0 && !loading && hasFilters ? (
-        <p className="p-4 text-sm text-gray-500">No shipments match your search/filters.</p>
-      ) : (
-        <>
-          <div className="relative">
-            {loading && (
-              <div className="absolute inset-x-0 top-0 z-10 flex justify-center pt-2">
-                <div
-                  className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600"
-                  role="status"
-                  aria-label="Loading"
-                />
-              </div>
-            )}
-
+      {/* The table chrome (chips, search, columns) always renders, even with
+          zero rows — an empty workspace still needs the column layout, and a
+          filter that matches nothing must keep its controls on screen to undo it. */}
+      <div className="relative">
+        {loading && (
+          <div className="absolute inset-x-0 top-0 z-10 flex justify-center pt-2">
             <div
-              className={`w-full overflow-x-auto transition-opacity ${loading ? "pointer-events-none opacity-50" : ""}`}
-            >
-              <table className="w-full min-w-[760px] text-left text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50/60 text-gray-500">
-                    {canEdit && (
-                      <th className="py-2.5 pr-2 pl-4 font-medium">
-                        <input
-                          type="checkbox"
-                          checked={allOnPageSelected}
-                          onChange={toggleAllOnPage}
-                          aria-label="Select all on page"
-                        />
-                      </th>
-                    )}
-                    {visibleColumnDefs.map((c) => renderHeaderCell(c.key))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {shipments.map((s) => (
-                    <tr
-                      key={s.id}
-                      // Whole row opens the detail page; clicks on the row's own
-                      // controls (checkbox, status select, customer link) keep their meaning.
-                      onClick={(e) => {
-                        if ((e.target as HTMLElement).closest("a, button, input, select, label")) return;
-                        router.push(`/shipments/${s.id}`);
-                      }}
-                      className="cursor-pointer border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50"
-                    >
-                      {canEdit && (
-                        <td className={`${padding} pr-2 pl-4`}>
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.has(s.id)}
-                            onChange={() => toggleRow(s.id)}
-                            aria-label={`Select shipment ${s.id}`}
-                          />
-                        </td>
-                      )}
-                      {visibleColumnDefs.map((c) => renderBodyCell(c.key, s))}
-                    </tr>
-                  ))}
-                </tbody>
-                {showSummaryRow && (
-                  <tfoot>
-                    <tr className="border-t border-gray-200 bg-gray-50/60 text-xs text-gray-500">
-                      {canEdit && <td className="py-2 pr-2 pl-4" />}
-                      {visibleColumnDefs.map((c, i) => (
-                        <td
-                          key={c.key}
-                          className={`py-2 pr-4 whitespace-nowrap ${
-                            c.key === "cost" ? "text-right font-medium text-gray-700 tabular-nums" : ""
-                          }`}
-                        >
-                          {i === 0 && `${total.toLocaleString()} rows`}
-                          {c.key === "cost" && `SUM ${formatAmounts(summaryAmounts)}`}
-                        </td>
-                      ))}
-                    </tr>
-                  </tfoot>
+              className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600"
+              role="status"
+              aria-label="Loading"
+            />
+          </div>
+        )}
+
+        <div
+          className={`w-full overflow-x-auto transition-opacity ${loading ? "pointer-events-none opacity-50" : ""}`}
+        >
+          <table className="w-full min-w-[760px] text-left text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 bg-gray-50/60 text-gray-500">
+                {canEdit && (
+                  <th className="py-2.5 pr-2 pl-4 font-medium">
+                    <input
+                      type="checkbox"
+                      checked={allOnPageSelected}
+                      onChange={toggleAllOnPage}
+                      aria-label="Select all on page"
+                    />
+                  </th>
                 )}
-              </table>
-            </div>
-          </div>
-
-          {error && <p className="px-4 pt-2 text-sm text-red-600">{error}</p>}
-
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 p-4 text-sm text-gray-500">
-            <div className="flex items-center gap-3">
-              <span className="tabular-nums">
-                {rangeStart.toLocaleString()}–{rangeEnd.toLocaleString()} of {total.toLocaleString()}
-              </span>
-              <label className="flex items-center gap-1.5">
-                Rows
-                <select
-                  value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value))}
-                  aria-label="Rows per page"
-                  className="rounded-md border border-gray-300 px-1.5 py-1 text-sm"
-                >
-                  {ROWS_PER_PAGE_OPTIONS.map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
-                disabled={loading || page === 0}
-                aria-label="Previous page"
-                className="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
-              >
-                <ChevronIcon direction="left" />
-              </button>
-              {pageWindow(page, totalPages).map((p, i) =>
-                p === "ellipsis" ? (
-                  <span key={`ellipsis-${i}`} className="px-1.5 text-gray-400">
-                    …
-                  </span>
-                ) : (
-                  <button
-                    key={p}
-                    onClick={() => setPage(p)}
-                    disabled={loading}
-                    aria-current={p === page ? "page" : undefined}
-                    className={`min-w-[1.75rem] rounded-md px-1.5 py-1 text-sm tabular-nums transition-colors ${
-                      p === page ? "bg-black text-white" : "text-gray-600 hover:bg-gray-100"
-                    }`}
-                  >
-                    {p + 1}
-                  </button>
-                )
+                {visibleColumnDefs.map((c) => renderHeaderCell(c.key))}
+              </tr>
+            </thead>
+            <tbody>
+              {shipments.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={visibleColumnDefs.length + (canEdit ? 1 : 0)} className="px-4 py-16 text-center">
+                    {hasFilters ? (
+                      <>
+                        <p className="text-sm font-medium text-gray-900">No shipments match these filters</p>
+                        <button
+                          onClick={clearFilters}
+                          className="mt-2 text-sm text-gray-500 underline underline-offset-2 hover:text-gray-900"
+                        >
+                          Clear filters
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm font-medium text-gray-900">No shipments yet</p>
+                        <p className="mt-1 text-sm text-gray-500">
+                          Upload a shipping document to log your first shipment.
+                        </p>
+                      </>
+                    )}
+                  </td>
+                </tr>
               )}
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                disabled={loading || page + 1 >= totalPages}
-                aria-label="Next page"
-                className="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+              {shipments.map((s) => (
+                <tr
+                  key={s.id}
+                  // Whole row opens the detail page; clicks on the row's own
+                  // controls (checkbox, status select, customer link) keep their meaning.
+                  onClick={(e) => {
+                    if ((e.target as HTMLElement).closest("a, button, input, select, label")) return;
+                    router.push(`/shipments/${s.id}`);
+                  }}
+                  className="cursor-pointer border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50"
+                >
+                  {canEdit && (
+                    <td className={`${padding} pr-2 pl-4`}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(s.id)}
+                        onChange={() => toggleRow(s.id)}
+                        aria-label={`Select shipment ${s.id}`}
+                      />
+                    </td>
+                  )}
+                  {visibleColumnDefs.map((c) => renderBodyCell(c.key, s))}
+                </tr>
+              ))}
+            </tbody>
+            {showSummaryRow && total > 0 && (
+              <tfoot>
+                <tr className="border-t border-gray-200 bg-gray-50/60 text-xs text-gray-500">
+                  {canEdit && <td className="py-2 pr-2 pl-4" />}
+                  {visibleColumnDefs.map((c, i) => (
+                    <td
+                      key={c.key}
+                      className={`py-2 pr-4 whitespace-nowrap ${
+                        c.key === "cost" ? "text-right font-medium text-gray-700 tabular-nums" : ""
+                      }`}
+                    >
+                      {i === 0 && `${total.toLocaleString()} rows`}
+                      {c.key === "cost" && `SUM ${formatAmounts(summaryAmounts)}`}
+                    </td>
+                  ))}
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </div>
+
+      {error && <p className="px-4 pt-2 text-sm text-red-600">{error}</p>}
+
+      {total > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 p-4 text-sm text-gray-500">
+          <div className="flex items-center gap-3">
+            <span className="tabular-nums">
+              {rangeStart.toLocaleString()}–{rangeEnd.toLocaleString()} of {total.toLocaleString()}
+            </span>
+            <label className="flex items-center gap-1.5">
+              Rows
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                aria-label="Rows per page"
+                className="rounded-md border border-gray-300 px-1.5 py-1 text-sm"
               >
-                <ChevronIcon direction="right" />
-              </button>
-            </div>
+                {ROWS_PER_PAGE_OPTIONS.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
-        </>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={loading || page === 0}
+              aria-label="Previous page"
+              className="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+            >
+              <ChevronIcon direction="left" />
+            </button>
+            {pageWindow(page, totalPages).map((p, i) =>
+              p === "ellipsis" ? (
+                <span key={`ellipsis-${i}`} className="px-1.5 text-gray-400">
+                  …
+                </span>
+              ) : (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  disabled={loading}
+                  aria-current={p === page ? "page" : undefined}
+                  className={`min-w-[1.75rem] rounded-md px-1.5 py-1 text-sm tabular-nums transition-colors ${
+                    p === page ? "bg-black text-white" : "text-gray-600 hover:bg-gray-100"
+                  }`}
+                >
+                  {p + 1}
+                </button>
+              )
+            )}
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={loading || page + 1 >= totalPages}
+              aria-label="Next page"
+              className="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+            >
+              <ChevronIcon direction="right" />
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
