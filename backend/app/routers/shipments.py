@@ -52,6 +52,7 @@ def _to_shipment_out(s: Shipment) -> ShipmentOut:
         currency=s.currency,
         status=s.status.value,
         shipment_date=s.shipment_date,
+        etd=s.etd,
         eta=s.eta,
         document_file_url=s.document.file_url if s.document else None,
         created_at=s.created_at,
@@ -60,6 +61,8 @@ def _to_shipment_out(s: Shipment) -> ShipmentOut:
 
 SORT_COLUMNS = {
     "shipment_date": Shipment.shipment_date,
+    "etd": Shipment.etd,
+    "eta": Shipment.eta,
     "customer": Customer.name,
     "cost": Shipment.freight_cost,
     "status": Shipment.status,
@@ -113,7 +116,7 @@ async def list_shipments(
     q: str | None = Query(default=None, max_length=255),
     status_filter: list[str] | None = Query(default=None, alias="status"),
     freight_mode_filter: list[str] | None = Query(default=None, alias="freight_mode"),
-    sort_by: str = Query(default="shipment_date", pattern="^(shipment_date|customer|cost|status)$"),
+    sort_by: str = Query(default="shipment_date", pattern="^(shipment_date|etd|eta|customer|cost|status)$"),
     sort_dir: str = Query(default="desc", pattern="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -143,6 +146,9 @@ async def list_shipments(
 
     sort_column = SORT_COLUMNS[sort_by]
     order = sort_column.asc() if sort_dir == "asc" else sort_column.desc()
+    # Inquiries have no ETD/ETA yet — keep them after every dated row in both
+    # directions rather than letting Postgres put NULLs first on DESC.
+    order = order.nulls_last()
 
     result = await db.scalars(
         _scope(select(Shipment))
@@ -244,6 +250,7 @@ async def create_shipment(
         freight_cost=payload.freight_cost,
         currency=payload.currency.upper(),
         shipment_date=payload.shipment_date,
+        etd=payload.etd,
         eta=payload.eta,
         note=payload.note,
         document_id=None,
@@ -271,6 +278,7 @@ async def create_shipment(
         currency=shipment.currency,
         status=shipment.status.value,
         shipment_date=shipment.shipment_date,
+        etd=shipment.etd,
         eta=shipment.eta,
         document_file_url=None,
         created_at=shipment.created_at,
@@ -409,6 +417,8 @@ async def bulk_update_dates(
     values: dict = {}
     if payload.shipment_date is not None:
         values["shipment_date"] = payload.shipment_date
+    if payload.etd is not None:
+        values["etd"] = payload.etd
     if payload.eta is not None:
         values["eta"] = payload.eta
 
@@ -543,28 +553,47 @@ async def generate_mock_data(
     return GenerateMockDataResponse(created=count)
 
 
+# Rough door-to-door transit days per mode, so mock ETAs land a plausible
+# distance after their ETD.
+MOCK_TRANSIT_DAYS = {
+    FreightMode.FCL: (18, 40),
+    FreightMode.LCL: (20, 45),
+    FreightMode.AIR: (1, 5),
+    FreightMode.RAIL: (14, 25),
+    FreightMode.ROAD: (2, 10),
+}
+
+
+def _mock_row(workspace_id: int, user_id: int, customer_ids: list[int], today: date) -> dict:
+    origin, destination = random.choice(MOCK_PORTS)
+    mode = random.choice(list(FreightMode))
+    shipment_status = random.choice(list(ShipmentStatus))
+    shipment_date = today - timedelta(days=random.randint(0, 364))
+    # An inquiry hasn't been booked onto a sailing yet, so it has no schedule.
+    etd = eta = None
+    if shipment_status != ShipmentStatus.inquiry:
+        etd = shipment_date + timedelta(days=random.randint(3, 14))
+        eta = etd + timedelta(days=random.randint(*MOCK_TRANSIT_DAYS[mode]))
+    return {
+        "workspace_id": workspace_id,
+        "created_by": user_id,
+        "customer_id": random.choice(customer_ids),
+        "carrier_id": None,
+        "freight_mode": mode,
+        "origin_port": origin,
+        "destination_port": destination,
+        "cargo_description": random.choice(MOCK_CARGO),
+        "weight_kg": Decimal(str(round(random.uniform(50, 20000), 2))),
+        "freight_cost": Decimal(str(round(random.uniform(200, 15000), 2))),
+        "currency": "USD",
+        "status": shipment_status,
+        "shipment_date": shipment_date,
+        "etd": etd,
+        "eta": eta,
+        "document_id": None,
+    }
+
+
 def _build_mock_rows(workspace_id: int, user_id: int, customer_ids: list[int], count: int) -> list[dict]:
     today = date.today()
-    modes = list(FreightMode)
-    statuses = list(ShipmentStatus)
-    return [
-        (
-            lambda origin, destination: {
-                "workspace_id": workspace_id,
-                "created_by": user_id,
-                "customer_id": random.choice(customer_ids),
-                "carrier_id": None,
-                "freight_mode": random.choice(modes),
-                "origin_port": origin,
-                "destination_port": destination,
-                "cargo_description": random.choice(MOCK_CARGO),
-                "weight_kg": Decimal(str(round(random.uniform(50, 20000), 2))),
-                "freight_cost": Decimal(str(round(random.uniform(200, 15000), 2))),
-                "currency": "USD",
-                "status": random.choice(statuses),
-                "shipment_date": today - timedelta(days=random.randint(0, 364)),
-                "document_id": None,
-            }
-        )(*random.choice(MOCK_PORTS))
-        for _ in range(count)
-    ]
+    return [_mock_row(workspace_id, user_id, customer_ids, today) for _ in range(count)]

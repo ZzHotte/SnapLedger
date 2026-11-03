@@ -137,6 +137,7 @@ async def _seed_shipment(
     destination_port=None,
     container_no=None,
     shipment_date_=date(2026, 1, 1),
+    etd=None,
 ):
     async with client.session_maker() as db:
         shipment = Shipment(
@@ -152,6 +153,7 @@ async def _seed_shipment(
             destination_port=destination_port,
             container_no=container_no,
             shipment_date=shipment_date_,
+            etd=etd,
         )
         db.add(shipment)
         await db.commit()
@@ -356,6 +358,41 @@ async def test_list_shipments_rejects_invalid_sort_by(client):
     assert resp.status_code == 422
 
 
+async def test_list_shipments_sorts_by_etd_with_undated_rows_last(client):
+    token = await _register(client, "sort-etd@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    me = await client.get("/auth/me", headers=headers)
+    for etd in [date(2026, 3, 1), None, date(2026, 5, 1)]:
+        await _seed_shipment(client, workspace_id, me.json()["id"], etd=etd)
+
+    for direction, expected in [("desc", ["2026-05-01", "2026-03-01", None]), ("asc", ["2026-03-01", "2026-05-01", None])]:
+        resp = await client.get(f"/shipments?sort_by=etd&sort_dir={direction}", headers=headers)
+        assert [item["etd"] for item in resp.json()["items"]] == expected
+
+
+async def test_create_shipment_rejects_eta_before_etd(client):
+    token = await _register(client, "etd-order@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    customer_id = await _seed_customer(client, workspace_id)
+    payload = {
+        "customer_id": customer_id,
+        "freight_mode": "FCL",
+        "currency": "USD",
+        "shipment_date": "2026-08-20",
+        "etd": "2026-09-10",
+    }
+
+    bad = await client.post("/shipments", headers=headers, json={**payload, "eta": "2026-09-01"})
+    assert bad.status_code == 422
+
+    ok = await client.post("/shipments", headers=headers, json={**payload, "eta": "2026-10-05"})
+    assert ok.status_code == 201
+    assert ok.json()["etd"] == "2026-09-10"
+    assert ok.json()["eta"] == "2026-10-05"
+
+
 async def test_create_shipment_without_a_document(client):
     token = await _register(client, "manual-owner@example.com")
     headers = {"Authorization": f"Bearer {token}"}
@@ -429,6 +466,21 @@ async def test_mock_data_shipments_have_no_document(client):
         rows = (await db.scalars(select(Shipment).where(Shipment.workspace_id == workspace_id))).all()
     assert len(rows) == 5
     assert all(r.document_id is None for r in rows)
+
+
+async def test_mock_data_schedules_are_plausible(client):
+    token = await _register(client, "mock-etd@example.com")
+    workspace_id = await _workspace_id(client, token)
+    await _seed_customer(client, workspace_id)
+    await client.post("/shipments/mock-data?count=60", headers={"Authorization": f"Bearer {token}"})
+
+    async with client.session_maker() as db:
+        rows = (await db.scalars(select(Shipment).where(Shipment.workspace_id == workspace_id))).all()
+    for r in rows:
+        if r.status == ShipmentStatus.inquiry:
+            assert r.etd is None and r.eta is None
+        else:
+            assert r.shipment_date < r.etd < r.eta
 
 
 async def test_mock_data_400s_when_workspace_has_no_customers(client):
@@ -717,6 +769,23 @@ async def test_bulk_update_dates(client):
         rows = [await db.get(Shipment, i) for i in ids]
     assert all(r.shipment_date.isoformat() == "2026-09-01" for r in rows)
     assert all(r.eta.isoformat() == "2026-09-15" for r in rows)
+
+
+async def test_bulk_update_etd_only_leaves_other_dates_alone(client):
+    token = await _register(client, "bulk-etd@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    me = await client.get("/auth/me", headers=headers)
+    shipment_id = await _seed_shipment(client, workspace_id, me.json()["id"])
+
+    resp = await client.patch("/shipments/bulk-dates", headers=headers, json={"ids": [shipment_id], "etd": "2026-09-03"})
+    assert resp.status_code == 200
+
+    async with client.session_maker() as db:
+        row = await db.get(Shipment, shipment_id)
+    assert row.etd.isoformat() == "2026-09-03"
+    assert row.shipment_date.isoformat() == "2026-01-01"
+    assert row.eta is None
 
 
 async def test_bulk_update_dates_rejects_when_neither_field_given(client):

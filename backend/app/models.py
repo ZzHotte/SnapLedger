@@ -179,7 +179,11 @@ class Shipment(Base):
     # Backs both the paginated list (WHERE workspace_id=? ORDER BY shipment_date)
     # and the dashboard's WHERE workspace_id=? AND shipment_date BETWEEN ? AND ?
     # — without it both do a full table scan once a workspace reaches mock-data scale.
-    __table_args__ = (Index("ix_shipments_workspace_date", "workspace_id", "shipment_date"),)
+    # The ETD index backs the shipments table's default ETD sort the same way.
+    __table_args__ = (
+        Index("ix_shipments_workspace_date", "workspace_id", "shipment_date"),
+        Index("ix_shipments_workspace_etd", "workspace_id", "etd"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
@@ -198,6 +202,7 @@ class Shipment(Base):
         Enum(ShipmentStatus, name="shipment_status"), default=ShipmentStatus.inquiry
     )
     shipment_date: Mapped[date] = mapped_column(Date, nullable=False)
+    etd: Mapped[date | None] = mapped_column(Date)
     eta: Mapped[date | None] = mapped_column(Date)
     note: Mapped[str | None] = mapped_column(String(500))
     # unique: DB-level backstop against the confirm_document race (two concurrent

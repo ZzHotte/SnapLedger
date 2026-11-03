@@ -129,8 +129,15 @@ class ShipmentInput(BaseModel):
     freight_cost: float | None = Field(default=None, gt=0)
     currency: str = Field(min_length=3, max_length=3)
     shipment_date: date
+    etd: date | None = None
     eta: date | None = None
     note: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def _eta_not_before_etd(self) -> "ShipmentInput":
+        if self.etd and self.eta and self.eta < self.etd:
+            raise ValueError("ETA can't be earlier than ETD")
+        return self
 
 
 class ConfirmDocumentRequest(ShipmentInput):
@@ -155,6 +162,7 @@ class ShipmentOut(BaseModel):
     currency: str
     status: str
     shipment_date: date
+    etd: date | None
     eta: date | None
     document_file_url: str | None
     created_at: datetime
@@ -192,12 +200,15 @@ class BulkStatusRequest(BulkIdsRequest):
 
 class BulkDatesRequest(BulkIdsRequest):
     shipment_date: date | None = None
+    etd: date | None = None
     eta: date | None = None
 
     @model_validator(mode="after")
     def _require_at_least_one_field(self) -> "BulkDatesRequest":
-        if self.shipment_date is None and self.eta is None:
-            raise ValueError("Provide at least one of shipment_date or eta")
+        if self.shipment_date is None and self.etd is None and self.eta is None:
+            raise ValueError("Provide at least one of shipment_date, etd or eta")
+        if self.etd and self.eta and self.eta < self.etd:
+            raise ValueError("ETA can't be earlier than ETD")
         return self
 
 
