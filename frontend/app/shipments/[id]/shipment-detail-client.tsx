@@ -249,10 +249,7 @@ export default function ShipmentDetailClient({ shipmentId }: { shipmentId: numbe
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 p-6">
       <div>
-        <Link href="/dashboard" className="text-sm text-gray-500 hover:text-gray-900">
-          ← Shipments
-        </Link>
-        <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
               <h1 className="font-mono text-xl font-semibold">{shipment.ref}</h1>
