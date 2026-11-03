@@ -12,6 +12,8 @@ import {
   type MacroIndicator,
 } from "@/lib/api";
 import { CURRENCIES, MARKET_DATA_COUNTRIES as COUNTRIES } from "@/lib/constants";
+import SegmentedControl from "@/components/ui/SegmentedControl";
+import CarrierTracking from "./carrier-tracking";
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleString();
@@ -228,6 +230,7 @@ function MacroIndicators() {
 
 export default function MarketDataPage() {
   const { user, loading: authLoading } = useAuth();
+  const [section, setSection] = useState<"tracking" | "rates">("tracking");
 
   if (authLoading || !user) {
     return (
@@ -238,15 +241,32 @@ export default function MarketDataPage() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 p-6">
-      <div>
-        <h1 className="text-xl font-semibold">Market Data</h1>
-        <p className="text-sm text-gray-500">Reference info only — not investment advice.</p>
+    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 p-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold">Market Data</h1>
+          <p className="text-sm text-gray-500">Carrier tracking and reference rates — not investment advice.</p>
+        </div>
+        <SegmentedControl
+          value={section}
+          onChange={setSection}
+          aria-label="Market data section"
+          options={[
+            { value: "tracking", label: "Carrier tracking" },
+            { value: "rates", label: "FX & rates" },
+          ]}
+        />
       </div>
 
-      <CurrencyConverter />
-      <BankRatesTable />
-      <MacroIndicators />
+      {section === "tracking" ? (
+        <CarrierTracking />
+      ) : (
+        <div className="flex max-w-3xl flex-col gap-8">
+          <CurrencyConverter />
+          <BankRatesTable />
+          <MacroIndicators />
+        </div>
+      )}
     </main>
   );
 }
