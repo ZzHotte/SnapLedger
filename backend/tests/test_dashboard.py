@@ -1,4 +1,5 @@
 from datetime import date
+from uuid import uuid4
 
 from app.dashboard import last_n_months, month_bounds
 from app.models import Customer, FreightMode, Shipment, ShipmentStatus
@@ -41,6 +42,7 @@ async def _add_shipment(
             Shipment(
                 workspace_id=workspace_id,
                 created_by=user_id,
+                ref=f"T-{uuid4().hex[:12]}",
                 customer_id=customer_id,
                 freight_mode=FreightMode.FCL,
                 currency=currency,

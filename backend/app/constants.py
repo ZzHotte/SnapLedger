@@ -11,6 +11,11 @@ hand-copied bank rate seed data for an example.
 
 from datetime import timedelta
 
+# --- Shipment reference numbers (see app/shipment_refs.py) ---
+# Every ref starts with this, e.g. MFT-26-0042. Migrations hard-code their own
+# copy (see the module docstring above), so changing this only affects new refs.
+SHIPMENT_REF_PREFIX = "MFT"
+
 # --- Freight modes ---
 # Steers the Gemini document-extraction prompt (app/gemini.py) toward a
 # recognized shipment mode; also mirrored in frontend/lib/constants.ts.

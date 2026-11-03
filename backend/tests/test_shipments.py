@@ -1,6 +1,7 @@
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from unittest.mock import patch
+from uuid import uuid4
 
 from sqlalchemy import select
 
@@ -61,6 +62,7 @@ async def _seed_shipments(client, workspace_id, user_id, n):
                 Shipment(
                     workspace_id=workspace_id,
                     created_by=user_id,
+                    ref=f"T-{uuid4().hex[:12]}",
                     freight_mode=FreightMode.FCL,
                     currency="USD",
                     cargo_description=f"Cargo {i}",
@@ -143,6 +145,7 @@ async def _seed_shipment(
         shipment = Shipment(
             workspace_id=workspace_id,
             created_by=user_id,
+            ref=f"T-{uuid4().hex[:12]}",
             customer_id=customer_id,
             freight_mode=freight_mode_,
             currency=currency,
@@ -391,6 +394,48 @@ async def test_create_shipment_rejects_eta_before_etd(client):
     assert ok.status_code == 201
     assert ok.json()["etd"] == "2026-09-10"
     assert ok.json()["eta"] == "2026-10-05"
+
+
+async def test_created_shipments_get_consecutive_refs_that_are_never_reused(client):
+    token = await _register(client, "refs-create@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    customer_id = await _seed_customer(client, workspace_id)
+    payload = {"customer_id": customer_id, "freight_mode": "FCL", "currency": "USD", "shipment_date": "2026-08-20"}
+    yy = f"{date.today().year % 100:02d}"
+
+    first = (await client.post("/shipments", headers=headers, json=payload)).json()
+    second = (await client.post("/shipments", headers=headers, json=payload)).json()
+    assert [first["ref"], second["ref"]] == [f"MFT-{yy}-0001", f"MFT-{yy}-0002"]
+
+    await client.delete(f"/shipments/{second['id']}", headers=headers)
+    third = (await client.post("/shipments", headers=headers, json=payload)).json()
+    assert third["ref"] == f"MFT-{yy}-0003"
+
+
+async def test_search_finds_a_shipment_by_ref(client):
+    token = await _register(client, "refs-search@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    customer_id = await _seed_customer(client, workspace_id)
+    payload = {"customer_id": customer_id, "freight_mode": "FCL", "currency": "USD", "shipment_date": "2026-08-20"}
+    for _ in range(3):
+        await client.post("/shipments", headers=headers, json=payload)
+
+    resp = await client.get("/shipments?q=0002", headers=headers)
+    assert [item["ref"][-4:] for item in resp.json()["items"]] == ["0002"]
+
+
+async def test_mock_data_gets_unique_consecutive_refs(client):
+    token = await _register(client, "refs-mock@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    await _seed_customer(client, workspace_id)
+    await client.post("/shipments/mock-data?count=12", headers=headers)
+
+    resp = await client.get("/shipments?sort_by=ref&sort_dir=asc&limit=50", headers=headers)
+    seqs = [int(item["ref"].rsplit("-", 1)[1]) for item in resp.json()["items"]]
+    assert seqs == list(range(1, 13))
 
 
 async def test_create_shipment_without_a_document(client):

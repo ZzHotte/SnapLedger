@@ -32,6 +32,7 @@ from app.schemas import (
     TrackingEventOut,
     UpdateShipmentStatusRequest,
 )
+from app.shipment_refs import allocate_refs
 from app.workspaces import require_editor, require_owner, resolve_workspace_membership
 
 router = APIRouter(prefix="/shipments", tags=["shipments"])
@@ -40,6 +41,7 @@ router = APIRouter(prefix="/shipments", tags=["shipments"])
 def _to_shipment_out(s: Shipment) -> ShipmentOut:
     return ShipmentOut(
         id=s.id,
+        ref=s.ref,
         customer_name=s.customer.name if s.customer else None,
         carrier_name=s.carrier.name if s.carrier else None,
         freight_mode=s.freight_mode.value,
@@ -60,6 +62,9 @@ def _to_shipment_out(s: Shipment) -> ShipmentOut:
 
 
 SORT_COLUMNS = {
+    # Refs are issued in insert order, so id sorts them exactly — and unlike
+    # the ref string it stays correct once a year's sequence passes 9999.
+    "ref": Shipment.id,
     "shipment_date": Shipment.shipment_date,
     "etd": Shipment.etd,
     "eta": Shipment.eta,
@@ -98,6 +103,7 @@ def _scope_shipments(
         pattern = f"%{q}%"
         stmt = stmt.where(
             or_(
+                Shipment.ref.ilike(pattern),
                 Customer.name.ilike(pattern),
                 Shipment.origin_port.ilike(pattern),
                 Shipment.destination_port.ilike(pattern),
@@ -116,7 +122,7 @@ async def list_shipments(
     q: str | None = Query(default=None, max_length=255),
     status_filter: list[str] | None = Query(default=None, alias="status"),
     freight_mode_filter: list[str] | None = Query(default=None, alias="freight_mode"),
-    sort_by: str = Query(default="shipment_date", pattern="^(shipment_date|etd|eta|customer|cost|status)$"),
+    sort_by: str = Query(default="shipment_date", pattern="^(ref|shipment_date|etd|eta|customer|cost|status)$"),
     sort_dir: str = Query(default="desc", pattern="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -239,6 +245,7 @@ async def create_shipment(
     shipment = Shipment(
         workspace_id=workspace.id,
         created_by=current_user.id,
+        ref=(await allocate_refs(db, workspace.id))[0],
         customer_id=payload.customer_id,
         carrier_id=payload.carrier_id,
         freight_mode=FreightMode(payload.freight_mode),
@@ -266,6 +273,7 @@ async def create_shipment(
 
     return ShipmentOut(
         id=shipment.id,
+        ref=shipment.ref,
         customer_name=customer.name if customer else None,
         carrier_name=carrier.name if carrier else None,
         freight_mode=shipment.freight_mode.value,
@@ -545,7 +553,8 @@ async def generate_mock_data(
     # Pure CPU-bound random-data generation — off the event loop so it doesn't
     # stall every other request this worker is handling while it runs, same
     # reasoning as documents.py's run_in_threadpool use for its blocking calls.
-    rows = await run_in_threadpool(_build_mock_rows, workspace.id, current_user.id, customer_ids, count)
+    refs = await allocate_refs(db, workspace.id, count)
+    rows = await run_in_threadpool(_build_mock_rows, workspace.id, current_user.id, customer_ids, refs)
 
     await db.execute(insert(Shipment), rows)
     await db.commit()
@@ -564,7 +573,7 @@ MOCK_TRANSIT_DAYS = {
 }
 
 
-def _mock_row(workspace_id: int, user_id: int, customer_ids: list[int], today: date) -> dict:
+def _mock_row(workspace_id: int, user_id: int, customer_ids: list[int], today: date, ref: str) -> dict:
     origin, destination = random.choice(MOCK_PORTS)
     mode = random.choice(list(FreightMode))
     shipment_status = random.choice(list(ShipmentStatus))
@@ -577,6 +586,7 @@ def _mock_row(workspace_id: int, user_id: int, customer_ids: list[int], today: d
     return {
         "workspace_id": workspace_id,
         "created_by": user_id,
+        "ref": ref,
         "customer_id": random.choice(customer_ids),
         "carrier_id": None,
         "freight_mode": mode,
@@ -594,6 +604,6 @@ def _mock_row(workspace_id: int, user_id: int, customer_ids: list[int], today: d
     }
 
 
-def _build_mock_rows(workspace_id: int, user_id: int, customer_ids: list[int], count: int) -> list[dict]:
+def _build_mock_rows(workspace_id: int, user_id: int, customer_ids: list[int], refs: list[str]) -> list[dict]:
     today = date.today()
-    return [_mock_row(workspace_id, user_id, customer_ids, today) for _ in range(count)]
+    return [_mock_row(workspace_id, user_id, customer_ids, today, ref) for ref in refs]

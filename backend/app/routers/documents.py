@@ -9,6 +9,7 @@ from app.deps import get_current_user
 from app.gemini import extract_document_fields
 from app.models import Carrier, Customer, Document, DocumentStatus, FreightMode, Shipment, User
 from app.schemas import ConfirmDocumentRequest, DocumentOut, ShipmentOut
+from app.shipment_refs import allocate_refs
 from app.workspaces import require_editor, resolve_workspace_membership
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -96,6 +97,7 @@ async def confirm_document(
     shipment = Shipment(
         workspace_id=workspace.id,
         created_by=current_user.id,
+        ref=(await allocate_refs(db, workspace.id))[0],
         customer_id=payload.customer_id,
         carrier_id=payload.carrier_id,
         freight_mode=FreightMode(payload.freight_mode),
@@ -127,6 +129,7 @@ async def confirm_document(
 
     return ShipmentOut(
         id=shipment.id,
+        ref=shipment.ref,
         customer_name=customer.name if customer else None,
         carrier_name=carrier.name if carrier else None,
         freight_mode=shipment.freight_mode.value,

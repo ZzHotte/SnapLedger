@@ -183,11 +183,14 @@ class Shipment(Base):
     __table_args__ = (
         Index("ix_shipments_workspace_date", "workspace_id", "shipment_date"),
         Index("ix_shipments_workspace_etd", "workspace_id", "etd"),
+        UniqueConstraint("workspace_id", "ref", name="uq_shipments_workspace_ref"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    # Issued once by app/shipment_refs.py and never edited.
+    ref: Mapped[str] = mapped_column(String(20), nullable=False)
     customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"))
     carrier_id: Mapped[int | None] = mapped_column(ForeignKey("carriers.id"))
     freight_mode: Mapped[FreightMode] = mapped_column(Enum(FreightMode, name="freight_mode"), nullable=False)
@@ -216,6 +219,16 @@ class Shipment(Base):
     document: Mapped["Document | None"] = relationship()
     quotes: Mapped[list["Quote"]] = relationship(back_populates="shipment")
     tracking_events: Mapped[list["TrackingEvent"]] = relationship(back_populates="shipment")
+
+
+class ShipmentRefCounter(Base):
+    """Last sequence number issued per workspace per year — see app/shipment_refs.py."""
+
+    __tablename__ = "shipment_ref_counters"
+
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), primary_key=True)
+    year: Mapped[int] = mapped_column(Integer, primary_key=True)
+    last_seq: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class Quote(Base):

@@ -150,6 +150,7 @@ class CreateShipmentRequest(ShipmentInput):
 
 class ShipmentOut(BaseModel):
     id: int
+    ref: str
     customer_name: str | None
     carrier_name: str | None
     freight_mode: str
