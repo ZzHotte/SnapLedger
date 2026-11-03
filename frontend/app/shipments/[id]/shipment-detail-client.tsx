@@ -81,6 +81,27 @@ function transitDays(etd: string | null, eta: string | null): number | null {
   return daysFromToday(eta) - daysFromToday(etd);
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        } catch {
+          // clipboard blocked (insecure context / permissions) — nothing useful to show
+        }
+      }}
+      aria-label={`Copy ${text}`}
+      className="rounded px-1.5 py-0.5 text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900"
+    >
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
 function MoreIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -233,9 +254,12 @@ export default function ShipmentDetailClient({ shipmentId }: { shipmentId: numbe
         </Link>
         <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs text-gray-500">Shipment #{shipment.id}</p>
-            <h1 className="text-xl font-semibold">{shipment.customer_name || "No customer"}</h1>
-            <p className="mt-0.5 text-sm text-gray-600">
+            <div className="flex items-center gap-2">
+              <h1 className="font-mono text-xl font-semibold">{shipment.ref}</h1>
+              <CopyButton text={shipment.ref} />
+            </div>
+            <p className="mt-0.5 text-sm font-medium text-gray-900">{shipment.customer_name || "No customer"}</p>
+            <p className="text-sm text-gray-600">
               {shipment.origin_port || "—"} → {shipment.destination_port || "—"} · {shipment.freight_mode}
             </p>
           </div>

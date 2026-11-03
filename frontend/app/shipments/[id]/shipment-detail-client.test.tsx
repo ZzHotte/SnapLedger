@@ -25,6 +25,7 @@ vi.mock("@/lib/api", async () => {
 
 const SHIPMENT: ShipmentDetail = {
   id: 7,
+  ref: "MFT-26-0007",
   customer_name: "Pacific Rim Trading Co.",
   carrier_name: "Maersk",
   freight_mode: "FCL",
@@ -53,9 +54,10 @@ beforeEach(() => {
 });
 
 describe("ShipmentDetailClient", () => {
-  it("leads with the customer and shows the schedule with transit days", async () => {
+  it("leads with the ref, then the customer and the schedule with transit days", async () => {
     render(<ShipmentDetailClient shipmentId={7} />);
-    expect(await screen.findByRole("heading", { name: "Pacific Rim Trading Co." })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "MFT-26-0007" })).toBeInTheDocument();
+    expect(screen.getByText("Pacific Rim Trading Co.")).toBeInTheDocument();
     expect(screen.getByText("2026-10-10")).toBeInTheDocument();
     expect(screen.getByText("29 days")).toBeInTheDocument();
     expect(screen.getByRole("listitem", { current: "step" })).toHaveTextContent("in transit");
@@ -75,7 +77,7 @@ describe("ShipmentDetailClient", () => {
   it("hides delete for viewers", async () => {
     useWorkspaceMock.mockReturnValue({ currentWorkspace: { id: 1, name: "WS", role: "viewer" } });
     render(<ShipmentDetailClient shipmentId={7} />);
-    await screen.findByRole("heading", { name: "Pacific Rim Trading Co." });
+    await screen.findByRole("heading", { name: "MFT-26-0007" });
     expect(screen.queryByRole("button", { name: "More" })).not.toBeInTheDocument();
   });
 });

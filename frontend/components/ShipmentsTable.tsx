@@ -27,9 +27,10 @@ const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100] as const;
 const DEFAULT_PAGE_SIZE = 50;
 const SEARCH_DEBOUNCE_MS = 350;
 
-type ColumnKey = "customer" | "route" | "etd" | "eta" | "mode" | "carrier" | "status" | "cost" | "date";
+type ColumnKey = "ref" | "customer" | "route" | "etd" | "eta" | "mode" | "carrier" | "status" | "cost" | "date";
 
 const COLUMN_DEFS: { key: ColumnKey; label: string }[] = [
+  { key: "ref", label: "Ref" },
   { key: "customer", label: "Customer" },
   { key: "route", label: "Route" },
   { key: "etd", label: "ETD" },
@@ -45,9 +46,9 @@ const COLUMN_DEFS: { key: ColumnKey; label: string }[] = [
 // but the schedule (ETD/ETA) is what a forwarder scans the table for.
 const DEFAULT_VISIBLE_COLUMNS: ColumnKey[] = COLUMN_DEFS.map((c) => c.key).filter((k) => k !== "date");
 
-// Bumped when the column set changed shape, so a layout saved under the old
-// set (which still had Date first and no ETD/ETA) doesn't override the new default.
-const VISIBLE_COLUMNS_STORAGE_KEY = "shipments.visibleColumns.v2";
+// Bumped whenever the column set changes shape (v2: ETD/ETA, v3: Ref), so a
+// layout saved under an older set doesn't hide the new columns.
+const VISIBLE_COLUMNS_STORAGE_KEY = "shipments.visibleColumns.v3";
 
 type Density = "compact" | "default" | "relaxed";
 
@@ -535,6 +536,8 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
             Carrier
           </th>
         );
+      case "ref":
+        return <SortHeader key={key} label="Ref" column="ref" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />;
       case "customer":
         return <SortHeader key={key} label="Customer" column="customer" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />;
       case "route":
@@ -592,16 +595,21 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
             {s.carrier_name || "—"}
           </td>
         );
+      case "ref":
+        return (
+          <td key={key} className={`${padding} pr-4 whitespace-nowrap`}>
+            <Link href={`/shipments/${s.id}`} className="font-mono text-[13px] font-medium text-gray-900 hover:underline">
+              {s.ref}
+            </Link>
+          </td>
+        );
       case "customer":
         return (
           <td key={key} className={`${padding} pr-4`}>
-            <Link
-              href={`/shipments/${s.id}`}
-              className="flex items-center gap-2.5 font-medium text-gray-900 hover:underline"
-            >
+            <span className="flex items-center gap-2.5">
               <Avatar name={s.customer_name || "—"} />
               {s.customer_name || "—"}
-            </Link>
+            </span>
           </td>
         );
       case "route":
@@ -679,7 +687,7 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
           type="search"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
-          placeholder="Search customer, port, cargo, container…"
+          placeholder="Search ref, customer, port, cargo, container…"
           className="w-64 rounded-md border border-gray-300 px-3 py-1.5 text-sm transition-colors focus:border-gray-400 focus:outline-none"
         />
         <div className="ml-auto flex items-center gap-2">
@@ -924,7 +932,7 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
                 <tr
                   key={s.id}
                   // Whole row opens the detail page; clicks on the row's own
-                  // controls (checkbox, status select, customer link) keep their meaning.
+                  // controls (checkbox, status select, ref link) keep their meaning.
                   onClick={(e) => {
                     if ((e.target as HTMLElement).closest("a, button, input, select, label")) return;
                     router.push(`/shipments/${s.id}`);

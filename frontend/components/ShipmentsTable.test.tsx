@@ -46,6 +46,7 @@ const WORKSPACE: Workspace = { id: 1, name: "My Freight Team", role: "owner" };
 function makeShipment(id: number): Shipment {
   return {
     id,
+    ref: `MFT-26-${String(id).padStart(4, "0")}`,
     customer_name: `Customer ${id}`,
     carrier_name: null,
     freight_mode: "FCL",
@@ -186,7 +187,7 @@ describe("ShipmentsTable", () => {
     await waitFor(() => expect(screen.getByText("51–100 of 120")).toBeInTheDocument());
     fetchShipmentsMock.mockClear();
 
-    fireEvent.change(screen.getByPlaceholderText("Search customer, port, cargo, container…"), {
+    fireEvent.change(screen.getByPlaceholderText("Search ref, customer, port, cargo, container…"), {
       target: { value: "acme" },
     });
 
@@ -295,13 +296,13 @@ describe("ShipmentsTable", () => {
     expect(pushMock).toHaveBeenCalledWith("/shipments/1");
   });
 
-  it("leads with Customer, shows ETD/ETA, and hides Job date by default", async () => {
+  it("leads with Ref then Customer, shows ETD/ETA, and hides Job date by default", async () => {
     window.localStorage.clear();
     render(<ShipmentsTable refreshKey={0} />);
     await waitFor(() => expect(screen.getByText("120 records")).toBeInTheDocument());
 
     const headers = screen.getAllByRole("columnheader").map((th) => th.textContent?.replace(/[▲▼]/g, "").trim());
-    expect(headers.filter(Boolean)).toEqual(["Customer", "Route", "ETD", "ETA", "Mode", "Carrier", "Status", "Freight cost"]);
+    expect(headers.filter(Boolean)).toEqual(["Ref", "Customer", "Route", "ETD", "ETA", "Mode", "Carrier", "Status", "Freight cost"]);
   });
 
   it("tracks row selection and shows a selection count, staying visible at 0", async () => {

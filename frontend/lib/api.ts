@@ -246,6 +246,7 @@ export type ConfirmDocumentPayload = ShipmentInput;
 
 export interface Shipment {
   id: number;
+  ref: string;
   customer_name: string | null;
   carrier_name: string | null;
   freight_mode: string;
@@ -290,7 +291,7 @@ export interface ShipmentListResult {
   total: number;
 }
 
-export type ShipmentSortBy = "shipment_date" | "etd" | "eta" | "customer" | "cost" | "status";
+export type ShipmentSortBy = "ref" | "shipment_date" | "etd" | "eta" | "customer" | "cost" | "status";
 export type SortDir = "asc" | "desc";
 
 export interface ShipmentListParams {
