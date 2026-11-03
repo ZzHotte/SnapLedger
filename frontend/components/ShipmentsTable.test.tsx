@@ -9,7 +9,7 @@ const {
   fetchShipmentStatusCountsMock,
   fetchShipmentsSummaryMock,
   updateShipmentStatusMock,
-  deleteShipmentMock,
+  pushMock,
   bulkUpdateShipmentStatusMock,
   bulkUpdateShipmentDatesMock,
   bulkDeleteShipmentsMock,
@@ -19,13 +19,14 @@ const {
   fetchShipmentStatusCountsMock: vi.fn(),
   fetchShipmentsSummaryMock: vi.fn(),
   updateShipmentStatusMock: vi.fn(),
-  deleteShipmentMock: vi.fn(),
+  pushMock: vi.fn(),
   bulkUpdateShipmentStatusMock: vi.fn(),
   bulkUpdateShipmentDatesMock: vi.fn(),
   bulkDeleteShipmentsMock: vi.fn(),
 }));
 
 vi.mock("@/lib/workspace-context", () => ({ useWorkspace: useWorkspaceMock }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: pushMock }) }));
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
   return {
@@ -34,7 +35,6 @@ vi.mock("@/lib/api", async () => {
     fetchShipmentStatusCounts: fetchShipmentStatusCountsMock,
     fetchShipmentsSummary: fetchShipmentsSummaryMock,
     updateShipmentStatus: updateShipmentStatusMock,
-    deleteShipment: deleteShipmentMock,
     bulkUpdateShipmentStatus: bulkUpdateShipmentStatusMock,
     bulkUpdateShipmentDates: bulkUpdateShipmentDatesMock,
     bulkDeleteShipments: bulkDeleteShipmentsMock,
@@ -58,6 +58,7 @@ function makeShipment(id: number): Shipment {
     currency: "USD",
     status: "inquiry",
     shipment_date: "2026-08-01",
+    etd: null,
     eta: null,
     document_file_url: null,
     created_at: "2026-08-01T00:00:00Z",
@@ -78,7 +79,7 @@ beforeEach(() => {
   fetchShipmentStatusCountsMock.mockReset();
   fetchShipmentsSummaryMock.mockReset();
   updateShipmentStatusMock.mockReset();
-  deleteShipmentMock.mockReset();
+  pushMock.mockReset();
   bulkUpdateShipmentStatusMock.mockReset();
   bulkUpdateShipmentDatesMock.mockReset();
   bulkDeleteShipmentsMock.mockReset();
@@ -89,7 +90,6 @@ beforeEach(() => {
   fetchShipmentStatusCountsMock.mockResolvedValue([{ status: "inquiry", count: 120 }]);
   fetchShipmentsSummaryMock.mockResolvedValue({ total_freight_cost: [{ currency: "USD", amount: 1234.5 }] });
   updateShipmentStatusMock.mockResolvedValue(undefined);
-  deleteShipmentMock.mockResolvedValue(undefined);
   bulkUpdateShipmentStatusMock.mockResolvedValue({ updated: 0 });
   bulkUpdateShipmentDatesMock.mockResolvedValue({ updated: 0 });
   bulkDeleteShipmentsMock.mockResolvedValue({ deleted: 0 });
@@ -100,7 +100,7 @@ describe("ShipmentsTable", () => {
     render(<ShipmentsTable refreshKey={0} />);
 
     await waitFor(() => expect(screen.getByText("120 records")).toBeInTheDocument());
-    expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, { q: undefined, status: undefined, freightMode: undefined, sortBy: "shipment_date", sortDir: "desc" });
+    expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, { q: undefined, status: undefined, freightMode: undefined, sortBy: "etd", sortDir: "desc" });
   });
 
   it("does not re-fetch the stale offset when refreshKey changes while on page > 0", async () => {
@@ -109,7 +109,7 @@ describe("ShipmentsTable", () => {
 
     fireEvent.click(screen.getByLabelText("Next page"));
     await waitFor(() => expect(screen.getByText("51–100 of 120")).toBeInTheDocument());
-    expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 50, { q: undefined, status: undefined, freightMode: undefined, sortBy: "shipment_date", sortDir: "desc" });
+    expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 50, { q: undefined, status: undefined, freightMode: undefined, sortBy: "etd", sortDir: "desc" });
 
     fetchShipmentsMock.mockClear();
 
@@ -120,7 +120,7 @@ describe("ShipmentsTable", () => {
 
     await waitFor(() => expect(screen.getByText("1–50 of 120")).toBeInTheDocument());
     expect(fetchShipmentsMock).toHaveBeenCalledTimes(1);
-    expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, { q: undefined, status: undefined, freightMode: undefined, sortBy: "shipment_date", sortDir: "desc" });
+    expect(fetchShipmentsMock).toHaveBeenCalledWith(1, 50, 0, { q: undefined, status: undefined, freightMode: undefined, sortBy: "etd", sortDir: "desc" });
   });
 
   it("keeps the previous page's data on screen (not a blank loading state) while fetching the next page", async () => {
@@ -173,7 +173,7 @@ describe("ShipmentsTable", () => {
           q: "acme",
           status: undefined,
           freightMode: undefined,
-          sortBy: "shipment_date",
+          sortBy: "etd",
           sortDir: "desc",
         }),
       { timeout: 1000 }
@@ -192,7 +192,7 @@ describe("ShipmentsTable", () => {
         q: undefined,
         status: ["booked"],
         freightMode: undefined,
-        sortBy: "shipment_date",
+        sortBy: "etd",
         sortDir: "desc",
       })
     );
@@ -204,7 +204,7 @@ describe("ShipmentsTable", () => {
         q: undefined,
         status: undefined,
         freightMode: undefined,
-        sortBy: "shipment_date",
+        sortBy: "etd",
         sortDir: "desc",
       })
     );
@@ -250,28 +250,32 @@ describe("ShipmentsTable", () => {
     await waitFor(() => expect(fetchShipmentsMock).toHaveBeenCalled());
   });
 
-  it("deletes a row after confirmation and refetches", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+  it("has no per-row delete — deleting goes through the bulk bar", async () => {
     render(<ShipmentsTable refreshKey={0} />);
     await waitFor(() => expect(screen.getByText("120 records")).toBeInTheDocument());
-    fetchShipmentsMock.mockClear();
 
-    fireEvent.click(screen.getByLabelText("Delete shipment 1"));
-
-    await waitFor(() => expect(deleteShipmentMock).toHaveBeenCalledWith(1, 1));
-    await waitFor(() => expect(fetchShipmentsMock).toHaveBeenCalled());
-    confirmSpy.mockRestore();
+    expect(screen.queryByLabelText("Delete shipment 1")).not.toBeInTheDocument();
+    expect(screen.getByText("Delete selected")).toBeInTheDocument();
   });
 
-  it("does not delete when the confirmation is declined", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+  it("opens the detail page on a row click but not on a click on the row's controls", async () => {
     render(<ShipmentsTable refreshKey={0} />);
     await waitFor(() => expect(screen.getByText("120 records")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByLabelText("Delete shipment 1"));
+    fireEvent.click(screen.getByLabelText("Select shipment 1"));
+    expect(pushMock).not.toHaveBeenCalled();
 
-    expect(deleteShipmentMock).not.toHaveBeenCalled();
-    confirmSpy.mockRestore();
+    fireEvent.click(screen.getAllByText("Shanghai, CN → Los Angeles, US")[0]);
+    expect(pushMock).toHaveBeenCalledWith("/shipments/1");
+  });
+
+  it("leads with Customer, shows ETD/ETA, and hides Job date by default", async () => {
+    window.localStorage.clear();
+    render(<ShipmentsTable refreshKey={0} />);
+    await waitFor(() => expect(screen.getByText("120 records")).toBeInTheDocument());
+
+    const headers = screen.getAllByRole("columnheader").map((th) => th.textContent?.replace(/[▲▼]/g, "").trim());
+    expect(headers.filter(Boolean)).toEqual(["Customer", "Route", "ETD", "ETA", "Mode", "Carrier", "Status", "Freight cost"]);
   });
 
   it("tracks row selection and shows a selection count, staying visible at 0", async () => {
@@ -304,7 +308,7 @@ describe("ShipmentsTable", () => {
     await waitFor(() => expect(screen.getByText("120 records")).toBeInTheDocument());
 
     expect(screen.queryByLabelText("Select all on page")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Delete shipment 1")).not.toBeInTheDocument();
+    expect(screen.queryByText("Delete selected")).not.toBeInTheDocument();
     // The one remaining combobox is the rows-per-page selector — a view
     // preference, not an edit action, so it stays available to viewers.
     expect(screen.queryAllByRole("combobox")).toHaveLength(1);
@@ -334,13 +338,13 @@ describe("ShipmentsTable", () => {
 
     expect(screen.getByText("Set dates")).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText("Bulk shipment date"), { target: { value: "2026-09-01" } });
+    fireEvent.change(screen.getByLabelText("Bulk ETD"), { target: { value: "2026-09-01" } });
     expect(screen.getByText("Set dates")).not.toBeDisabled();
 
     fireEvent.click(screen.getByText("Set dates"));
 
     await waitFor(() =>
-      expect(bulkUpdateShipmentDatesMock).toHaveBeenCalledWith([1], { shipment_date: "2026-09-01", eta: undefined }, 1)
+      expect(bulkUpdateShipmentDatesMock).toHaveBeenCalledWith([1], { etd: "2026-09-01", eta: undefined }, 1)
     );
     await waitFor(() => expect(screen.getByText("0 selected")).toBeInTheDocument());
   });

@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ApiError,
   bulkDeleteShipments,
   bulkUpdateShipmentDates,
   bulkUpdateShipmentStatus,
-  deleteShipment,
   fetchShipments,
   fetchShipmentStatusCounts,
   fetchShipmentsSummary,
@@ -18,6 +18,7 @@ import {
 } from "@/lib/api";
 import { formatAmounts } from "@/lib/format";
 import { FREIGHT_MODES, SHIPMENT_STATUSES } from "@/lib/constants";
+import { scheduleHint } from "@/lib/schedule";
 import { useWorkspace } from "@/lib/workspace-context";
 import { Button } from "@/components/ui/Button";
 import Popover from "@/components/ui/Popover";
@@ -26,16 +27,27 @@ const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100] as const;
 const DEFAULT_PAGE_SIZE = 50;
 const SEARCH_DEBOUNCE_MS = 350;
 
-type ColumnKey = "date" | "customer" | "route" | "mode" | "status" | "cost";
+type ColumnKey = "customer" | "route" | "etd" | "eta" | "mode" | "carrier" | "status" | "cost" | "date";
 
 const COLUMN_DEFS: { key: ColumnKey; label: string }[] = [
-  { key: "date", label: "Date" },
   { key: "customer", label: "Customer" },
   { key: "route", label: "Route" },
+  { key: "etd", label: "ETD" },
+  { key: "eta", label: "ETA" },
   { key: "mode", label: "Mode" },
+  { key: "carrier", label: "Carrier" },
   { key: "status", label: "Status" },
   { key: "cost", label: "Freight cost" },
+  { key: "date", label: "Job date" },
 ];
+
+// Job date is the internal booking date — kept for sorting and the View menu,
+// but the schedule (ETD/ETA) is what a forwarder scans the table for.
+const DEFAULT_VISIBLE_COLUMNS: ColumnKey[] = COLUMN_DEFS.map((c) => c.key).filter((k) => k !== "date");
+
+// Bumped when the column set changed shape, so a layout saved under the old
+// set (which still had Date first and no ETD/ETA) doesn't override the new default.
+const VISIBLE_COLUMNS_STORAGE_KEY = "shipments.visibleColumns.v2";
 
 type Density = "compact" | "default" | "relaxed";
 
@@ -145,6 +157,21 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function ScheduleCell({ kind, date, status }: { kind: "etd" | "eta"; date: string | null; status: string }) {
+  const hint = scheduleHint(kind, date, status);
+  if (!date) return <span className="text-gray-400">—</span>;
+  return (
+    <span className="inline-flex items-baseline gap-1.5 tabular-nums">
+      {date}
+      {hint && (
+        <span className={`text-[11px] font-medium ${hint.tone === "late" ? "text-red-600" : "text-amber-600"}`}>
+          {hint.label}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function Avatar({ name }: { name: string }) {
   return (
     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[11px] font-medium text-gray-600">
@@ -209,6 +236,7 @@ function SortHeader({ label, column, sortBy, sortDir, onSort, align = "left" }: 
 
 export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
   const { currentWorkspace } = useWorkspace();
+  const router = useRouter();
   const canEdit = currentWorkspace?.role !== "viewer";
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [total, setTotal] = useState(0);
@@ -219,24 +247,21 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
   const [density, setDensity] = useState<Density>(() => readLocalStorage("shipments.density", "default" as Density));
   const [showSummaryRow, setShowSummaryRow] = useState(() => readLocalStorage("shipments.showSummaryRow", true));
   const [visibleColumns, setVisibleColumns] = useState<ColumnKey[]>(() =>
-    readLocalStorage(
-      "shipments.visibleColumns",
-      COLUMN_DEFS.map((c) => c.key)
-    )
+    readLocalStorage(VISIBLE_COLUMNS_STORAGE_KEY, DEFAULT_VISIBLE_COLUMNS)
   );
   const [loading, setLoading] = useState(true);
   const [everLoaded, setEverLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
-  // Bumped after a row-level status change or delete to force a refetch
+  // Bumped after a row-level status change or bulk action to force a refetch
   // without resetting the current page (unlike search/filter/sort changes,
   // which should jump back to page 0 — see resetKey below).
   const [localRefresh, setLocalRefresh] = useState(0);
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkStatus, setBulkStatus] = useState<string>(SHIPMENT_STATUSES[0]);
-  const [bulkShipmentDate, setBulkShipmentDate] = useState("");
+  const [bulkEtd, setBulkEtd] = useState("");
   const [bulkEta, setBulkEta] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
 
@@ -244,7 +269,7 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [freightModeFilter, setFreightModeFilter] = useState<string[]>([]);
-  const [sortBy, setSortBy] = useState<ShipmentSortBy>("shipment_date");
+  const [sortBy, setSortBy] = useState<ShipmentSortBy>("etd");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   useEffect(() => {
@@ -255,7 +280,7 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
   useEffect(() => writeLocalStorage("shipments.pageSize", pageSize), [pageSize]);
   useEffect(() => writeLocalStorage("shipments.density", density), [density]);
   useEffect(() => writeLocalStorage("shipments.showSummaryRow", showSummaryRow), [showSummaryRow]);
-  useEffect(() => writeLocalStorage("shipments.visibleColumns", visibleColumns), [visibleColumns]);
+  useEffect(() => writeLocalStorage(VISIBLE_COLUMNS_STORAGE_KEY, visibleColumns), [visibleColumns]);
 
   function toggleStatus(s: string) {
     setStatusFilter((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
@@ -398,26 +423,6 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
     }
   }
 
-  async function handleDelete(shipmentId: number) {
-    if (!currentWorkspace) return;
-    if (!window.confirm("Delete this shipment? This can't be undone.")) return;
-    setBusyId(shipmentId);
-    setRowError(null);
-    try {
-      await deleteShipment(shipmentId, currentWorkspace.id);
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
-        next.delete(shipmentId);
-        return next;
-      });
-      setLocalRefresh((n) => n + 1);
-    } catch (err) {
-      setRowError(err instanceof ApiError ? err.message : "Failed to delete shipment");
-    } finally {
-      setBusyId(null);
-    }
-  }
-
   async function handleBulkStatusApply() {
     if (!currentWorkspace || selectedIds.size === 0) return;
     setBulkBusy(true);
@@ -435,17 +440,17 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
 
   async function handleBulkDatesApply() {
     if (!currentWorkspace || selectedIds.size === 0) return;
-    if (!bulkShipmentDate && !bulkEta) return;
+    if (!bulkEtd && !bulkEta) return;
     setBulkBusy(true);
     setRowError(null);
     try {
       await bulkUpdateShipmentDates(
         Array.from(selectedIds),
-        { shipment_date: bulkShipmentDate || undefined, eta: bulkEta || undefined },
+        { etd: bulkEtd || undefined, eta: bulkEta || undefined },
         currentWorkspace.id
       );
       setSelectedIds(new Set());
-      setBulkShipmentDate("");
+      setBulkEtd("");
       setBulkEta("");
       setLocalRefresh((n) => n + 1);
     } catch (err) {
@@ -516,7 +521,17 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
   function renderHeaderCell(key: ColumnKey) {
     switch (key) {
       case "date":
-        return <SortHeader key={key} label="Date" column="shipment_date" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />;
+        return <SortHeader key={key} label="Job date" column="shipment_date" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />;
+      case "etd":
+        return <SortHeader key={key} label="ETD" column="etd" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />;
+      case "eta":
+        return <SortHeader key={key} label="ETA" column="eta" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />;
+      case "carrier":
+        return (
+          <th key={key} className="py-2.5 pr-4 text-[11px] font-medium tracking-wide uppercase">
+            Carrier
+          </th>
+        );
       case "customer":
         return <SortHeader key={key} label="Customer" column="customer" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />;
       case "route":
@@ -552,19 +567,38 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
     switch (key) {
       case "date":
         return (
+          <td key={key} className={`${padding} pr-4 whitespace-nowrap text-gray-500 tabular-nums`}>
+            {s.shipment_date}
+          </td>
+        );
+      case "etd":
+        return (
           <td key={key} className={`${padding} pr-4 whitespace-nowrap`}>
-            <Link href={`/shipments/${s.id}`} className="transition-colors hover:text-gray-900 hover:underline">
-              {s.shipment_date}
-            </Link>
+            <ScheduleCell kind="etd" date={s.etd} status={s.status} />
+          </td>
+        );
+      case "eta":
+        return (
+          <td key={key} className={`${padding} pr-4 whitespace-nowrap`}>
+            <ScheduleCell kind="eta" date={s.eta} status={s.status} />
+          </td>
+        );
+      case "carrier":
+        return (
+          <td key={key} className={`${padding} pr-4 whitespace-nowrap ${s.carrier_name ? "" : "text-gray-400"}`}>
+            {s.carrier_name || "—"}
           </td>
         );
       case "customer":
         return (
           <td key={key} className={`${padding} pr-4`}>
-            <span className="flex items-center gap-2.5">
+            <Link
+              href={`/shipments/${s.id}`}
+              className="flex items-center gap-2.5 font-medium text-gray-900 hover:underline"
+            >
               <Avatar name={s.customer_name || "—"} />
               {s.customer_name || "—"}
-            </span>
+            </Link>
           </td>
         );
       case "route":
@@ -791,10 +825,11 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
           <div className="flex items-center gap-1.5">
             <input
               type="date"
-              value={bulkShipmentDate}
-              onChange={(e) => setBulkShipmentDate(e.target.value)}
+              value={bulkEtd}
+              onChange={(e) => setBulkEtd(e.target.value)}
               disabled={bulkBusy || selectedIds.size === 0}
-              aria-label="Bulk shipment date"
+              aria-label="Bulk ETD"
+              title="ETD"
               className="rounded-md border border-gray-300 px-2 py-1 text-xs disabled:opacity-40"
             />
             <input
@@ -803,13 +838,14 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
               onChange={(e) => setBulkEta(e.target.value)}
               disabled={bulkBusy || selectedIds.size === 0}
               aria-label="Bulk ETA"
+              title="ETA"
               className="rounded-md border border-gray-300 px-2 py-1 text-xs disabled:opacity-40"
             />
             <Button
               variant="secondary"
               size="sm"
               onClick={handleBulkDatesApply}
-              disabled={bulkBusy || selectedIds.size === 0 || (!bulkShipmentDate && !bulkEta)}
+              disabled={bulkBusy || selectedIds.size === 0 || (!bulkEtd && !bulkEta)}
             >
               Set dates
             </Button>
@@ -855,12 +891,20 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
                       </th>
                     )}
                     {visibleColumnDefs.map((c) => renderHeaderCell(c.key))}
-                    {canEdit && <th className="py-2.5 pr-4 pl-4 font-medium" />}
                   </tr>
                 </thead>
                 <tbody>
                   {shipments.map((s) => (
-                    <tr key={s.id} className="border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50">
+                    <tr
+                      key={s.id}
+                      // Whole row opens the detail page; clicks on the row's own
+                      // controls (checkbox, status select, customer link) keep their meaning.
+                      onClick={(e) => {
+                        if ((e.target as HTMLElement).closest("a, button, input, select, label")) return;
+                        router.push(`/shipments/${s.id}`);
+                      }}
+                      className="cursor-pointer border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50"
+                    >
                       {canEdit && (
                         <td className={`${padding} pr-2 pl-4`}>
                           <input
@@ -872,18 +916,6 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
                         </td>
                       )}
                       {visibleColumnDefs.map((c) => renderBodyCell(c.key, s))}
-                      {canEdit && (
-                        <td className={`${padding} pr-4 pl-4 text-right`}>
-                          <button
-                            onClick={() => handleDelete(s.id)}
-                            disabled={busyId === s.id}
-                            className="text-xs text-gray-400 transition-colors hover:text-red-600 disabled:opacity-50"
-                            aria-label={`Delete shipment ${s.id}`}
-                          >
-                            Delete
-                          </button>
-                        </td>
-                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -902,7 +934,6 @@ export default function ShipmentsTable({ refreshKey }: { refreshKey: number }) {
                           {c.key === "cost" && `SUM ${formatAmounts(summaryAmounts)}`}
                         </td>
                       ))}
-                      {canEdit && <td className="py-2 pr-4 pl-4" />}
                     </tr>
                   </tfoot>
                 )}

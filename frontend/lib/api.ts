@@ -237,6 +237,7 @@ export interface ShipmentInput {
   freight_cost?: number | null;
   currency: string;
   shipment_date: string;
+  etd?: string | null;
   eta?: string | null;
   note?: string | null;
 }
@@ -257,6 +258,7 @@ export interface Shipment {
   currency: string;
   status: string;
   shipment_date: string;
+  etd: string | null;
   eta: string | null;
   document_file_url: string | null;
   created_at: string;
@@ -288,7 +290,7 @@ export interface ShipmentListResult {
   total: number;
 }
 
-export type ShipmentSortBy = "shipment_date" | "customer" | "cost" | "status";
+export type ShipmentSortBy = "shipment_date" | "etd" | "eta" | "customer" | "cost" | "status";
 export type SortDir = "asc" | "desc";
 
 export interface ShipmentListParams {
@@ -398,7 +400,7 @@ export function bulkUpdateShipmentStatus(ids: number[], status: string, workspac
 
 export function bulkUpdateShipmentDates(
   ids: number[],
-  dates: { shipment_date?: string; eta?: string },
+  dates: { shipment_date?: string; etd?: string; eta?: string },
   workspaceId: number
 ) {
   return request<{ updated: number }>(`/shipments/bulk-dates?workspace_id=${workspaceId}`, {
