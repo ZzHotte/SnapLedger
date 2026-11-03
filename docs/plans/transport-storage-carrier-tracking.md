@@ -176,7 +176,7 @@ Container / B/L no.、Shipper / Consignee、Weight / CBM、Vessel / Voyage、Pro
 
 ### 第二期
 
-- [x] Ref 编号系统（代码完成，待在 Neon 执行迁移 `f2a3b4c5d6e7` 后上线）
+- [x] Ref 编号系统（迁移 `f2a3b4c5d6e7`，2026-11-03 上线）
   - 格式 `MFT-26-0042`：统一前缀 `MFT` + 两位年份 + 当年序号（至少 4 位，超过 9999 自动变 5 位）
   - 每个 workspace 每年独立计数，1 月 1 日从 0001 重新开始；按创建时间（UTC）归年
   - 生成后不可修改；删除后编号不回收（留空号）
@@ -211,4 +211,4 @@ Container / B/L no.、Shipper / Consignee、Weight / CBM、Vessel / Voyage、Pro
 
 - 2026-11-03：三个模块的前端骨架完成并合并到 main（`6f36984`）。
 - 2026-11-03：Shipments 第一期（ETD、表格列、详情页）代码完成，待在 Neon 执行迁移后上线。
-- 2026-11-03：Shipments 第一期上线；空表格修复上线；Ref 编号系统代码完成，待迁移。
+- 2026-11-03：Shipments 第一期上线；空表格修复上线；Ref 编号系统上线（`MFT-26-0001` 起）。
