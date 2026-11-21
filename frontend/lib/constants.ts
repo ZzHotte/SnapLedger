@@ -17,7 +17,7 @@ export const SHIPMENT_STATUSES = [
 ] as const;
 
 // How many mock shipments the "Generate mock data" button creates.
-export const MOCK_DATA_COUNT = 10_000;
+export const MOCK_DATA_COUNT = 15;
 
 // Currencies offered for freight cost / quote entry and the market-data
 // exchange rate converter.
