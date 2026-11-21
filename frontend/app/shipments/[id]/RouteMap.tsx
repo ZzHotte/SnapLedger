@@ -29,10 +29,6 @@ function MapCanvas({ origin, destination }: { origin: Port; destination: Port })
       // Mercator rather than the default globe — the card is wide and short,
       // and a globe wastes most of that width showing ocean the route isn't on.
       projection: "mercator",
-      // A near-antipodal port pair can still zoom out close to a world view
-      // — repeated world copies at that zoom look like a rendering glitch,
-      // so turn them off.
-      renderWorldCopies: false,
       attributionControl: false,
     });
     map.addControl(new mapboxgl.AttributionControl({ compact: true }));
