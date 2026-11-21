@@ -65,8 +65,12 @@ export default function NavBar() {
 
   return (
     <header className="border-b border-gray-200 bg-white px-6">
-      <div className="flex h-12 items-center justify-between gap-4">
-        <div className="flex h-full items-center gap-7">
+      {/* The full bar (logo + 6 tabs + workspace switcher + Team + user +
+          Log out) doesn't fit a phone-width viewport. Scrolling it
+          horizontally within the header keeps every item reachable without
+          the overflow pushing the whole page sideways. */}
+      <div className="flex h-12 items-center justify-between gap-4 overflow-x-auto">
+        <div className="flex h-full shrink-0 items-center gap-7">
           <Link href="/" aria-label="Shiplog home" className="flex items-center">
             <Logo size={20} />
           </Link>
@@ -83,7 +87,7 @@ export default function NavBar() {
           </nav>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex shrink-0 items-center gap-4">
           {currentWorkspace && (
             <Dropdown
               value={currentWorkspace.id}
