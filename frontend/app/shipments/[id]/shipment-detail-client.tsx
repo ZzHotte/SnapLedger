@@ -298,6 +298,20 @@ export default function ShipmentDetailClient({ shipmentId }: { shipmentId: numbe
 
       <StatusProgress status={shipment.status} />
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Route map</CardTitle>
+        </CardHeader>
+        <RouteMap
+          originName={shipment.origin_port}
+          destinationName={shipment.destination_port}
+          originLat={shipment.origin_lat}
+          originLng={shipment.origin_lng}
+          destinationLat={shipment.destination_lat}
+          destinationLng={shipment.destination_lng}
+        />
+      </Card>
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="flex flex-col gap-6">
           <Card>
@@ -492,20 +506,6 @@ export default function ShipmentDetailClient({ shipmentId }: { shipmentId: numbe
           </Card>
         </div>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Route map</CardTitle>
-        </CardHeader>
-        <RouteMap
-          originName={shipment.origin_port}
-          destinationName={shipment.destination_port}
-          originLat={shipment.origin_lat}
-          originLng={shipment.origin_lng}
-          destinationLat={shipment.destination_lat}
-          destinationLng={shipment.destination_lng}
-        />
-      </Card>
     </main>
   );
 }
