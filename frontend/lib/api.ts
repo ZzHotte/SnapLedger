@@ -371,6 +371,34 @@ export function generateMockData(workspaceId: number, count: number) {
   });
 }
 
+export interface LivePosition {
+  shipment_id: number;
+  ref: string;
+  customer_name: string | null;
+  destination_port: string | null;
+  destination_lat: number | null;
+  destination_lng: number | null;
+  lat: number;
+  lng: number;
+  accuracy_m: number | null;
+  recorded_at: string;
+  reported_by_name: string | null;
+}
+
+export function postVehiclePing(
+  payload: { shipment_id: number; lat: number; lng: number; accuracy_m?: number | null },
+  workspaceId: number
+) {
+  return request<void>(`/transport/ping?workspace_id=${workspaceId}`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchLivePositions(workspaceId: number) {
+  return request<LivePosition[]>(`/transport/live?workspace_id=${workspaceId}`);
+}
+
 export interface Quote {
   id: number;
   carrier_name: string;

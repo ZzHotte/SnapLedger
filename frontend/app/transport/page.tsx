@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspace } from "@/lib/workspace-context";
+import { fetchLivePositions, type LivePosition } from "@/lib/api";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import Badge, { PreviewNotice, type BadgeTone } from "@/components/ui/Badge";
 import SegmentedControl from "@/components/ui/SegmentedControl";
@@ -11,6 +12,33 @@ import { TRIPS, type Trip, type TripStatus } from "./sample-data";
 import TransportMap, { PIN_COLOR } from "./TransportMap";
 
 type Filter = "active" | "all" | "offline";
+
+// How often the dispatcher view re-checks for new positions — the driver
+// page throttles its own pings to roughly the same cadence, so polling
+// faster wouldn't actually show anything new.
+const LIVE_POLL_MS = 8000;
+
+function liveToTrip(p: LivePosition): Trip {
+  return {
+    id: `live-${p.shipment_id}`,
+    vehicle: `${p.ref} · Live GPS`,
+    driver: p.reported_by_name ?? "Driver",
+    phone: "",
+    shipment_ref: p.ref,
+    customer: p.customer_name ?? "—",
+    container_no: null,
+    from: "—",
+    to: p.destination_port ?? "—",
+    to_lat: p.destination_lat ?? p.lat,
+    to_lng: p.destination_lng ?? p.lng,
+    status: "in_transit",
+    lat: p.lat,
+    lng: p.lng,
+    speed_kmh: 0,
+    last_ping: p.recorded_at,
+    eta: null,
+  };
+}
 
 const STATUS_TONE: Record<TripStatus, BadgeTone> = {
   assigned: "gray",
@@ -77,17 +105,39 @@ export default function TransportPage() {
   const { currentWorkspace } = useWorkspace();
   const [filter, setFilter] = useState<Filter>("active");
   const [selectedId, setSelectedId] = useState<string | null>(TRIPS[0].id);
+  const [livePositions, setLivePositions] = useState<LivePosition[]>([]);
+
+  useEffect(() => {
+    if (!currentWorkspace) return;
+    let cancelled = false;
+    function poll() {
+      fetchLivePositions(currentWorkspace!.id).then((positions) => {
+        if (!cancelled) setLivePositions(positions);
+      }, /* a failed poll just tries again next tick */ () => {});
+    }
+    poll();
+    const interval = setInterval(poll, LIVE_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [currentWorkspace]);
+
+  // Real, driver-reported positions alongside the sample fleet — the sample
+  // trips demonstrate the page with data that's always there; live ones show
+  // up automatically once a driver actually shares their location for a job.
+  const allTrips = useMemo(() => [...livePositions.map(liveToTrip), ...TRIPS], [livePositions]);
 
   const visible = useMemo(() => {
-    if (filter === "all") return TRIPS;
-    if (filter === "offline") return TRIPS.filter((t) => t.status === "offline");
-    return TRIPS.filter((t) => t.status !== "delivered");
-  }, [filter]);
+    if (filter === "all") return allTrips;
+    if (filter === "offline") return allTrips.filter((t) => t.status === "offline");
+    return allTrips.filter((t) => t.status !== "delivered");
+  }, [allTrips, filter]);
 
-  const selected = TRIPS.find((t) => t.id === selectedId) ?? null;
-  const moving = TRIPS.filter((t) => t.speed_kmh > 0).length;
-  const offline = TRIPS.filter((t) => t.status === "offline").length;
-  const delivered = TRIPS.filter((t) => t.status === "delivered").length;
+  const selected = allTrips.find((t) => t.id === selectedId) ?? null;
+  const moving = allTrips.filter((t) => t.speed_kmh > 0).length;
+  const offline = allTrips.filter((t) => t.status === "offline").length;
+  const delivered = allTrips.filter((t) => t.status === "delivered").length;
 
   if (authLoading || !user || !currentWorkspace) {
     return (
@@ -113,7 +163,7 @@ export default function TransportPage() {
       <PreviewNotice>Sample vehicles — live GPS sharing isn&apos;t wired up yet.</PreviewNotice>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatTile label="Vehicles on job" value={TRIPS.length - delivered} />
+        <StatTile label="Vehicles on job" value={allTrips.length - delivered} />
         <StatTile label="Moving now" value={moving} />
         <StatTile label="Delivered today" value={delivered} />
         <StatTile label="Signal lost" value={offline} hint="no ping > 15 min" />

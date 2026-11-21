@@ -263,6 +263,27 @@ class CreateTrackingEventRequest(BaseModel):
     note: str | None = Field(default=None, max_length=500)
 
 
+class PingRequest(BaseModel):
+    shipment_id: int
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+    accuracy_m: float | None = Field(default=None, ge=0)
+
+
+class LivePositionOut(BaseModel):
+    shipment_id: int
+    ref: str
+    customer_name: str | None
+    destination_port: str | None
+    destination_lat: float | None
+    destination_lng: float | None
+    lat: float
+    lng: float
+    accuracy_m: float | None
+    recorded_at: datetime
+    reported_by_name: str | None
+
+
 class ShipmentDetailOut(ShipmentOut):
     quotes: list[QuoteOut]
     tracking_events: list[TrackingEventOut]

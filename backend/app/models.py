@@ -270,6 +270,27 @@ class TrackingEvent(Base):
     shipment: Mapped["Shipment"] = relationship(back_populates="tracking_events")
 
 
+class ShipmentPosition(Base):
+    """Latest GPS fix reported from a driver's phone for a shipment — just the
+    current point, not a trail. One row per shipment (upserted on every ping),
+    since the Transport map only ever shows where a vehicle is *now*."""
+
+    __tablename__ = "shipment_positions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    shipment_id: Mapped[int] = mapped_column(ForeignKey("shipments.id"), unique=True, nullable=False)
+    reported_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    lat: Mapped[float] = mapped_column(Float, nullable=False)
+    lng: Mapped[float] = mapped_column(Float, nullable=False)
+    accuracy_m: Mapped[float | None] = mapped_column(Float)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    shipment: Mapped["Shipment"] = relationship()
+    reporter: Mapped["User"] = relationship()
+
+
 class ExchangeRate(Base):
     __tablename__ = "exchange_rates"
     __table_args__ = (UniqueConstraint("base_currency", "target_currency", name="uq_exchange_rate_pair"),)
