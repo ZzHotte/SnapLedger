@@ -9,6 +9,32 @@ if (MAPBOX_TOKEN) mapboxgl.accessToken = MAPBOX_TOKEN;
 
 type Port = { name: string; lat: number; lng: number };
 
+// A quadratic-bezier arc between the two points, bowed toward the north —
+// a plain straight line reads as flat/lifeless for a shipping route, but a
+// true great circle bulges all the way to the pole for a long, high-latitude
+// pair (see the earlier fix) and isn't actually more accurate anyway, since
+// this is a placeholder for the real sailing route. The bow is capped so it
+// stays a gentle curve regardless of how long the route is.
+function bowedArc(start: [number, number], end: [number, number], steps = 32): [number, number][] {
+  const midLng = (start[0] + end[0]) / 2;
+  const midLat = (start[1] + end[1]) / 2;
+  const span = Math.hypot(end[0] - start[0], end[1] - start[1]);
+  const bow = Math.min(span * 0.12, 15);
+  const controlLng = midLng;
+  const controlLat = midLat + bow;
+
+  const points: [number, number][] = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const oneMinusT = 1 - t;
+    points.push([
+      oneMinusT * oneMinusT * start[0] + 2 * oneMinusT * t * controlLng + t * t * end[0],
+      oneMinusT * oneMinusT * start[1] + 2 * oneMinusT * t * controlLat + t * t * end[1],
+    ]);
+  }
+  return points;
+}
+
 function Placeholder({ message }: { message: string }) {
   return (
     <div className="flex h-[360px] w-full items-center justify-center rounded-md border border-dashed border-gray-200 bg-gray-50">
@@ -35,33 +61,18 @@ function MapCanvas({ origin, destination }: { origin: Port; destination: Port })
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
 
     map.on("load", () => {
-      // A straight line toward the port, going whichever way round the
-      // globe is shorter (e.g. Asia -> US East Coast heads east across the
-      // Pacific, not west across Europe). This is a placeholder for an
-      // actual sailing route — the real shipping lane with transshipment
-      // ports is a separate, later feature — so a plain direct line reads
-      // more honestly than a geometrically "correct" great circle, which
-      // bulges dramatically toward the pole for routes like this one and
-      // looks like a routing bug rather than the straight line it's meant
-      // to convey.
+      // Go whichever way round the globe is shorter (e.g. Asia -> US East
+      // Coast heads east across the Pacific, not west across Europe).
       let lngDelta = destination.lng - origin.lng;
       if (lngDelta > 180) lngDelta -= 360;
       if (lngDelta < -180) lngDelta += 360;
       const destLng = origin.lng + lngDelta;
 
+      const line = bowedArc([origin.lng, origin.lat], [destLng, destination.lat]);
+
       map.addSource("route", {
         type: "geojson",
-        data: {
-          type: "Feature",
-          properties: {},
-          geometry: {
-            type: "LineString",
-            coordinates: [
-              [origin.lng, origin.lat],
-              [destLng, destination.lat],
-            ],
-          },
-        },
+        data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: line } },
       });
       map.addLayer({
         id: "route-line",
@@ -80,9 +91,9 @@ function MapCanvas({ origin, destination }: { origin: Port; destination: Port })
         .setPopup(new mapboxgl.Popup({ offset: 16, closeButton: false }).setText(destination.name))
         .addTo(map);
 
-      const bounds = new mapboxgl.LngLatBounds(
-        [Math.min(origin.lng, destLng), Math.min(origin.lat, destination.lat)],
-        [Math.max(origin.lng, destLng), Math.max(origin.lat, destination.lat)]
+      const bounds = line.reduce(
+        (b, point) => b.extend(point),
+        new mapboxgl.LngLatBounds(line[0], line[0])
       );
       map.fitBounds(bounds, { padding: 56, duration: 0 });
     });
