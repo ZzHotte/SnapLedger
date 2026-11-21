@@ -91,10 +91,13 @@ def _scope_shipments(
     freight_modes: list[FreightMode],
     q: str | None,
     needs_customer_join: bool,
+    customer_id: int | None = None,
 ):
     stmt = stmt.where(Shipment.workspace_id == workspace_id)
     if needs_customer_join:
         stmt = stmt.outerjoin(Customer, Customer.id == Shipment.customer_id)
+    if customer_id is not None:
+        stmt = stmt.where(Shipment.customer_id == customer_id)
     if statuses:
         stmt = stmt.where(Shipment.status.in_(statuses))
     if freight_modes:
@@ -122,6 +125,7 @@ async def list_shipments(
     q: str | None = Query(default=None, max_length=255),
     status_filter: list[str] | None = Query(default=None, alias="status"),
     freight_mode_filter: list[str] | None = Query(default=None, alias="freight_mode"),
+    customer_id: int | None = None,
     sort_by: str = Query(default="shipment_date", pattern="^(ref|shipment_date|etd|eta|customer|cost|status)$"),
     sort_dir: str = Query(default="desc", pattern="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
@@ -146,6 +150,7 @@ async def list_shipments(
             freight_modes=freight_modes,
             q=q,
             needs_customer_join=needs_customer_join,
+            customer_id=customer_id,
         )
 
     total = await db.scalar(_scope(select(func.count()).select_from(Shipment)))

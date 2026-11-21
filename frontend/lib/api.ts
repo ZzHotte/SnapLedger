@@ -180,6 +180,10 @@ export function fetchCustomers(workspaceId: number) {
   return request<Customer[]>(`/customers?workspace_id=${workspaceId}`);
 }
 
+export function fetchCustomer(customerId: number, workspaceId: number) {
+  return request<Customer>(`/customers/${customerId}?workspace_id=${workspaceId}`);
+}
+
 export function createCustomer(
   workspaceId: number,
   payload: { name: string; contact_name?: string | null; contact_email?: string | null; contact_phone?: string | null }
@@ -305,6 +309,7 @@ export interface ShipmentListParams {
   q?: string;
   status?: string[];
   freightMode?: string[];
+  customerId?: number;
   sortBy?: ShipmentSortBy;
   sortDir?: SortDir;
 }
@@ -313,6 +318,7 @@ function appendShipmentFilterParams(search: URLSearchParams, params: ShipmentLis
   if (params.q) search.set("q", params.q);
   for (const s of params.status ?? []) search.append("status", s);
   for (const m of params.freightMode ?? []) search.append("freight_mode", m);
+  if (params.customerId) search.set("customer_id", String(params.customerId));
 }
 
 export function fetchShipments(

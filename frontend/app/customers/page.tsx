@@ -1,36 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { Reorder, useDragControls } from "motion/react";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspace } from "@/lib/workspace-context";
 import { ApiError, createCustomer, fetchCustomers, reorderCustomers, type Customer } from "@/lib/api";
+import { avatarTone, initials } from "@/lib/avatar";
 import { Button } from "@/components/ui/Button";
-
-// Deterministic avatar color per customer, from the same hue family as
-// Badge's tones, so a customer's accent color never changes across reloads.
-const AVATAR_TONES = [
-  "bg-blue-50 text-blue-700",
-  "bg-indigo-50 text-indigo-700",
-  "bg-amber-50 text-amber-700",
-  "bg-green-50 text-green-700",
-  "bg-purple-50 text-purple-700",
-  "bg-rose-50 text-rose-700",
-  "bg-teal-50 text-teal-700",
-];
-
-function avatarTone(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
-  return AVATAR_TONES[hash % AVATAR_TONES.length];
-}
-
-function initials(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return "?";
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  return (words[0][0] + words[1][0]).toUpperCase();
-}
 
 function CustomerCard({ customer, onDragEnd }: { customer: Customer; onDragEnd: () => void }) {
   const dragControls = useDragControls();
@@ -48,13 +25,13 @@ function CustomerCard({ customer, onDragEnd }: { customer: Customer; onDragEnd: 
       animate={{ opacity: 1, y: 0 }}
       whileDrag={{ scale: 1.02, boxShadow: "0 10px 24px -8px rgba(0,0,0,0.18)", zIndex: 1 }}
       transition={{ duration: 0.15 }}
-      className="group relative flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 select-none"
+      className="group relative flex items-center gap-1 rounded-lg border border-gray-200 bg-white pr-4 select-none hover:bg-gray-50"
     >
       <button
         type="button"
         onPointerDown={(e) => dragControls.start(e)}
         aria-label={`Reorder ${customer.name}`}
-        className="shrink-0 cursor-grab touch-none rounded p-1 text-gray-300 opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
+        className="shrink-0 cursor-grab touch-none rounded p-1 pl-3 text-gray-300 opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
       >
         <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
           <circle cx="5" cy="3" r="1.3" />
@@ -66,14 +43,16 @@ function CustomerCard({ customer, onDragEnd }: { customer: Customer; onDragEnd: 
         </svg>
       </button>
 
-      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${avatarTone(customer.name)}`}>
-        {initials(customer.name)}
-      </span>
+      <Link href={`/customers/${customer.id}`} className="flex min-w-0 flex-1 items-center gap-3 py-3">
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${avatarTone(customer.name)}`}>
+          {initials(customer.name)}
+        </span>
 
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-gray-900">{customer.name}</span>
-        <span className="block truncate text-xs text-gray-500">{contactLine || "No contact details"}</span>
-      </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-gray-900">{customer.name}</span>
+          <span className="block truncate text-xs text-gray-500">{contactLine || "No contact details"}</span>
+        </span>
+      </Link>
     </Reorder.Item>
   );
 }

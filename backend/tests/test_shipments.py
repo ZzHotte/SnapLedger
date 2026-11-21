@@ -199,6 +199,26 @@ async def test_list_shipments_search_matches_cargo_and_ports(client):
     assert resp.json()["total"] == 1
 
 
+async def test_list_shipments_filters_by_customer_id(client):
+    token = await _register(client, "filter-customer@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = await _workspace_id(client, token)
+    me = await client.get("/auth/me", headers=headers)
+    acme_id = await _seed_customer(client, workspace_id, "Acme Import Co.")
+    globex_id = await _seed_customer(client, workspace_id, "Globex Trading")
+    await _seed_shipment(client, workspace_id, me.json()["id"], customer_id=acme_id)
+    await _seed_shipment(client, workspace_id, me.json()["id"], customer_id=globex_id)
+    await _seed_shipment(client, workspace_id, me.json()["id"], customer_id=globex_id)
+
+    resp = await client.get(f"/shipments?customer_id={acme_id}", headers=headers)
+    body = resp.json()
+    assert body["total"] == 1
+    assert body["items"][0]["customer_name"] == "Acme Import Co."
+
+    resp = await client.get(f"/shipments?customer_id={globex_id}", headers=headers)
+    assert resp.json()["total"] == 2
+
+
 async def test_list_shipments_filters_by_status(client):
     token = await _register(client, "filter1@example.com")
     headers = {"Authorization": f"Bearer {token}"}

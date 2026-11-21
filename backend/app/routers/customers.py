@@ -11,6 +11,19 @@ from app.workspaces import require_editor, resolve_workspace_membership
 router = APIRouter(prefix="/customers", tags=["customers"])
 
 
+def _to_customer_out(c: Customer) -> CustomerOut:
+    return CustomerOut(
+        id=c.id, name=c.name, contact_name=c.contact_name, contact_email=c.contact_email, contact_phone=c.contact_phone
+    )
+
+
+async def _get_customer_or_404(db: AsyncSession, workspace_id: int, customer_id: int) -> Customer:
+    customer = await db.get(Customer, customer_id)
+    if customer is None or customer.workspace_id != workspace_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
+    return customer
+
+
 @router.get("", response_model=list[CustomerOut])
 async def list_customers(
     workspace_id: int | None = None,
@@ -24,12 +37,19 @@ async def list_customers(
         .where(Customer.workspace_id == workspace.id)
         .order_by(Customer.sort_order, Customer.name)
     )
-    return [
-        CustomerOut(
-            id=c.id, name=c.name, contact_name=c.contact_name, contact_email=c.contact_email, contact_phone=c.contact_phone
-        )
-        for c in result.all()
-    ]
+    return [_to_customer_out(c) for c in result.all()]
+
+
+@router.get("/{customer_id}", response_model=CustomerOut)
+async def get_customer(
+    customer_id: int,
+    workspace_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    workspace, _role = await resolve_workspace_membership(db, current_user, workspace_id)
+    customer = await _get_customer_or_404(db, workspace.id, customer_id)
+    return _to_customer_out(customer)
 
 
 @router.post("", response_model=CustomerOut, status_code=status.HTTP_201_CREATED)
@@ -59,13 +79,7 @@ async def create_customer(
     db.add(customer)
     await db.commit()
 
-    return CustomerOut(
-        id=customer.id,
-        name=customer.name,
-        contact_name=customer.contact_name,
-        contact_email=customer.contact_email,
-        contact_phone=customer.contact_phone,
-    )
+    return _to_customer_out(customer)
 
 
 @router.patch("/reorder", status_code=status.HTTP_204_NO_CONTENT)

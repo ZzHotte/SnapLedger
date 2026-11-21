@@ -50,6 +50,39 @@ async def test_create_and_list_customers(client):
     assert names == ["Acme Corp"]
 
 
+async def test_get_customer_returns_details(client):
+    token = await _register(client, "owner9@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    create_resp = await client.post(
+        "/customers",
+        headers=headers,
+        json={"name": "Acme Corp", "contact_name": "Jane Doe", "contact_email": "jane@acme.com"},
+    )
+    customer_id = create_resp.json()["id"]
+
+    resp = await client.get(f"/customers/{customer_id}", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json() == create_resp.json()
+
+
+async def test_get_customer_404s_for_unknown_id(client):
+    token = await _register(client, "owner10@example.com")
+    resp = await client.get("/customers/999999", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 404
+
+
+async def test_get_customer_404s_for_customer_in_another_workspace(client):
+    owner_a_token = await _register(client, "owner11@example.com")
+    create_resp = await client.post(
+        "/customers", headers={"Authorization": f"Bearer {owner_a_token}"}, json={"name": "Acme Corp"}
+    )
+    customer_id = create_resp.json()["id"]
+
+    owner_b_token = await _register(client, "owner12@example.com")
+    resp = await client.get(f"/customers/{customer_id}", headers={"Authorization": f"Bearer {owner_b_token}"})
+    assert resp.status_code == 404
+
+
 async def test_reorder_customers_persists_order(client):
     token = await _register(client, "owner6@example.com")
     headers = {"Authorization": f"Bearer {token}"}
