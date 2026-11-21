@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     google_redirect_uri: str
     frontend_url: str = "http://localhost:3000"
     gemini_api_key: str = ""
+    mapbox_token: str = ""
     cloudinary_cloud_name: str = ""
     cloudinary_api_key: str = ""
     cloudinary_api_secret: str = ""

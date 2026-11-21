@@ -55,6 +55,28 @@ MOCK_PORTS = [
     ("Yantian, CN", "New York, US"),
     ("Qingdao, CN", "Antwerp, BE"),
 ]
+# Hand-pinned (lat, lng) for the mock ports above — mock-data generation can
+# create hundreds of rows at once, so it uses this instead of geocoding each
+# one through app/geocoding.py (real shipments geocode their free-text ports
+# at creation time; see app/routers/shipments.py and routers/documents.py).
+MOCK_PORT_COORDS: dict[str, tuple[float, float]] = {
+    "Shanghai, CN": (31.2304, 121.4737),
+    "Los Angeles, US": (33.7405, -118.2668),
+    "Ningbo, CN": (29.8683, 121.5440),
+    "Rotterdam, NL": (51.9244, 4.4777),
+    "Shenzhen, CN": (22.5431, 114.0579),
+    "Hamburg, DE": (53.5511, 9.9937),
+    "Singapore, SG": (1.3521, 103.8198),
+    "Sydney, AU": (-33.8688, 151.2093),
+    "Hong Kong, HK": (22.3193, 114.1694),
+    "Long Beach, US": (33.7701, -118.1937),
+    "Busan, KR": (35.1796, 129.0756),
+    "Melbourne, AU": (-37.8136, 144.9631),
+    "Yantian, CN": (22.5667, 114.2667),
+    "New York, US": (40.7128, -74.0060),
+    "Qingdao, CN": (36.0671, 120.3826),
+    "Antwerp, BE": (51.2194, 4.4025),
+}
 MOCK_CARGO = [
     "Electronics components",
     "Furniture",

@@ -7,6 +7,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -197,6 +198,13 @@ class Shipment(Base):
     freight_mode: Mapped[FreightMode] = mapped_column(Enum(FreightMode, name="freight_mode"), nullable=False)
     origin_port: Mapped[str | None] = mapped_column(String(255))
     destination_port: Mapped[str | None] = mapped_column(String(255))
+    # Geocoded once at creation time (see app/geocoding.py) and cached here —
+    # ports are never edited after creation, so there's no staleness to worry
+    # about, and the route map doesn't re-hit Mapbox on every page view.
+    origin_lat: Mapped[float | None] = mapped_column(Float)
+    origin_lng: Mapped[float | None] = mapped_column(Float)
+    destination_lat: Mapped[float | None] = mapped_column(Float)
+    destination_lng: Mapped[float | None] = mapped_column(Float)
     cargo_description: Mapped[str | None] = mapped_column(String(500))
     container_no: Mapped[str | None] = mapped_column(String(50))
     weight_kg: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))

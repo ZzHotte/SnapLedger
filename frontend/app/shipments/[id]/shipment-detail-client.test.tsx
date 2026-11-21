@@ -13,6 +13,9 @@ const { useWorkspaceMock, fetchShipmentMock, deleteShipmentMock, pushMock } = vi
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({ user: { id: 1 }, loading: false }) }));
 vi.mock("@/lib/workspace-context", () => ({ useWorkspace: useWorkspaceMock }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: pushMock }) }));
+// mapbox-gl needs a real WebGL context, which jsdom doesn't provide — this page's
+// map rendering itself is covered by RouteMap's own tests, not these.
+vi.mock("./RouteMap", () => ({ default: () => <div data-testid="route-map" /> }));
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
   return {
@@ -31,6 +34,10 @@ const SHIPMENT: ShipmentDetail = {
   freight_mode: "FCL",
   origin_port: "Qingdao, CN",
   destination_port: "Melbourne, AU",
+  origin_lat: 36.0671,
+  origin_lng: 120.3826,
+  destination_lat: -37.8136,
+  destination_lng: 144.9631,
   cargo_description: "Furniture",
   container_no: "MSKU7342110",
   weight_kg: 9840,

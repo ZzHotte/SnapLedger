@@ -21,6 +21,7 @@ import { daysFromToday, scheduleHint } from "@/lib/schedule";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import Popover from "@/components/ui/Popover";
+import RouteMap from "./RouteMap";
 
 function statusLabel(status: string): string {
   return status.replace("_", " ");
@@ -491,6 +492,20 @@ export default function ShipmentDetailClient({ shipmentId }: { shipmentId: numbe
           </Card>
         </div>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Route map</CardTitle>
+        </CardHeader>
+        <RouteMap
+          originName={shipment.origin_port}
+          destinationName={shipment.destination_port}
+          originLat={shipment.origin_lat}
+          originLng={shipment.origin_lng}
+          destinationLat={shipment.destination_lat}
+          destinationLng={shipment.destination_lng}
+        />
+      </Card>
     </main>
   );
 }

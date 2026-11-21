@@ -1,3 +1,4 @@
+import asyncio
 import random
 from datetime import date, timedelta
 from decimal import Decimal
@@ -8,9 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from starlette.concurrency import run_in_threadpool
 
-from app.constants import DEFAULT_MOCK_COUNT, MAX_MOCK_COUNT, MOCK_CARGO, MOCK_PORTS
+from app.constants import DEFAULT_MOCK_COUNT, MAX_MOCK_COUNT, MOCK_CARGO, MOCK_PORT_COORDS, MOCK_PORTS
 from app.database import get_db
 from app.deps import get_current_user
+from app.geocoding import geocode_port
 from app.models import Carrier, Customer, FreightMode, Quote, Shipment, ShipmentStatus, TrackingEvent, User
 from app.schemas import (
     BulkDatesRequest,
@@ -47,6 +49,10 @@ def _to_shipment_out(s: Shipment) -> ShipmentOut:
         freight_mode=s.freight_mode.value,
         origin_port=s.origin_port,
         destination_port=s.destination_port,
+        origin_lat=s.origin_lat,
+        origin_lng=s.origin_lng,
+        destination_lat=s.destination_lat,
+        destination_lng=s.destination_lng,
         cargo_description=s.cargo_description,
         container_no=s.container_no,
         weight_kg=float(s.weight_kg) if s.weight_kg is not None else None,
@@ -247,6 +253,13 @@ async def create_shipment(
     workspace, role = await resolve_workspace_membership(db, current_user, workspace_id)
     require_editor(role)
 
+    # Independent lookups — geocode both ports together rather than one after
+    # the other.
+    origin_coords, destination_coords = await asyncio.gather(
+        geocode_port(payload.origin_port),
+        geocode_port(payload.destination_port),
+    )
+
     shipment = Shipment(
         workspace_id=workspace.id,
         created_by=current_user.id,
@@ -256,6 +269,10 @@ async def create_shipment(
         freight_mode=FreightMode(payload.freight_mode),
         origin_port=payload.origin_port,
         destination_port=payload.destination_port,
+        origin_lat=origin_coords[0] if origin_coords else None,
+        origin_lng=origin_coords[1] if origin_coords else None,
+        destination_lat=destination_coords[0] if destination_coords else None,
+        destination_lng=destination_coords[1] if destination_coords else None,
         cargo_description=payload.cargo_description,
         container_no=payload.container_no,
         weight_kg=payload.weight_kg,
@@ -284,6 +301,10 @@ async def create_shipment(
         freight_mode=shipment.freight_mode.value,
         origin_port=shipment.origin_port,
         destination_port=shipment.destination_port,
+        origin_lat=shipment.origin_lat,
+        origin_lng=shipment.origin_lng,
+        destination_lat=shipment.destination_lat,
+        destination_lng=shipment.destination_lng,
         cargo_description=shipment.cargo_description,
         container_no=shipment.container_no,
         weight_kg=float(shipment.weight_kg) if shipment.weight_kg is not None else None,
@@ -580,6 +601,8 @@ MOCK_TRANSIT_DAYS = {
 
 def _mock_row(workspace_id: int, user_id: int, customer_ids: list[int], today: date, ref: str) -> dict:
     origin, destination = random.choice(MOCK_PORTS)
+    origin_lat, origin_lng = MOCK_PORT_COORDS[origin]
+    destination_lat, destination_lng = MOCK_PORT_COORDS[destination]
     mode = random.choice(list(FreightMode))
     shipment_status = random.choice(list(ShipmentStatus))
     shipment_date = today - timedelta(days=random.randint(0, 364))
@@ -597,6 +620,10 @@ def _mock_row(workspace_id: int, user_id: int, customer_ids: list[int], today: d
         "freight_mode": mode,
         "origin_port": origin,
         "destination_port": destination,
+        "origin_lat": origin_lat,
+        "origin_lng": origin_lng,
+        "destination_lat": destination_lat,
+        "destination_lng": destination_lng,
         "cargo_description": random.choice(MOCK_CARGO),
         "weight_kg": Decimal(str(round(random.uniform(50, 20000), 2))),
         "freight_cost": Decimal(str(round(random.uniform(200, 15000), 2))),

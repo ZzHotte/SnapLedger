@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,6 +8,7 @@ from starlette.concurrency import run_in_threadpool
 from app.cloudinary_client import upload_document_file
 from app.database import get_db
 from app.deps import get_current_user
+from app.geocoding import geocode_port
 from app.gemini import extract_document_fields
 from app.models import Carrier, Customer, Document, DocumentStatus, FreightMode, Shipment, User
 from app.schemas import ConfirmDocumentRequest, DocumentOut, ShipmentOut
@@ -94,6 +97,13 @@ async def confirm_document(
     if document.status == DocumentStatus.confirmed:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Document already confirmed")
 
+    # Independent lookups — geocode both ports together rather than one after
+    # the other.
+    origin_coords, destination_coords = await asyncio.gather(
+        geocode_port(payload.origin_port),
+        geocode_port(payload.destination_port),
+    )
+
     shipment = Shipment(
         workspace_id=workspace.id,
         created_by=current_user.id,
@@ -103,6 +113,10 @@ async def confirm_document(
         freight_mode=FreightMode(payload.freight_mode),
         origin_port=payload.origin_port,
         destination_port=payload.destination_port,
+        origin_lat=origin_coords[0] if origin_coords else None,
+        origin_lng=origin_coords[1] if origin_coords else None,
+        destination_lat=destination_coords[0] if destination_coords else None,
+        destination_lng=destination_coords[1] if destination_coords else None,
         cargo_description=payload.cargo_description,
         container_no=payload.container_no,
         weight_kg=payload.weight_kg,
@@ -135,6 +149,10 @@ async def confirm_document(
         freight_mode=shipment.freight_mode.value,
         origin_port=shipment.origin_port,
         destination_port=shipment.destination_port,
+        origin_lat=shipment.origin_lat,
+        origin_lng=shipment.origin_lng,
+        destination_lat=shipment.destination_lat,
+        destination_lng=shipment.destination_lng,
         cargo_description=shipment.cargo_description,
         container_no=shipment.container_no,
         weight_kg=float(shipment.weight_kg) if shipment.weight_kg is not None else None,

@@ -263,6 +263,10 @@ export interface Shipment {
   freight_mode: string;
   origin_port: string | null;
   destination_port: string | null;
+  origin_lat: number | null;
+  origin_lng: number | null;
+  destination_lat: number | null;
+  destination_lng: number | null;
   cargo_description: string | null;
   container_no: string | null;
   weight_kg: number | null;

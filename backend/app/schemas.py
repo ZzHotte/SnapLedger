@@ -160,6 +160,10 @@ class ShipmentOut(BaseModel):
     freight_mode: str
     origin_port: str | None
     destination_port: str | None
+    origin_lat: float | None
+    origin_lng: float | None
+    destination_lat: float | None
+    destination_lng: float | None
     cargo_description: str | None
     container_no: str | None
     weight_kg: float | None
