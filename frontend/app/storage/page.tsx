@@ -290,7 +290,7 @@ export default function StoragePage() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 p-6">
+    <main className="mx-auto flex w-full max-w-screen-2xl flex-1 flex-col gap-6 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Storage</h1>

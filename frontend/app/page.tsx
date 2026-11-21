@@ -147,7 +147,7 @@ export default function DashboardPage() {
     // Clicking anywhere in the page that doesn't stop propagation (i.e.
     // everywhere except the trend bars themselves) clears the drill-down —
     // the "click blank space to reset" gesture.
-    <main onClick={() => setSelectedTrendMonth(null)} className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 p-6">
+    <main onClick={() => setSelectedTrendMonth(null)} className="mx-auto flex w-full max-w-screen-2xl flex-1 flex-col gap-6 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold">Dashboard</h1>
         <div className="flex items-center gap-3">
