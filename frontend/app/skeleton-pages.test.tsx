@@ -10,6 +10,19 @@ vi.mock("@/lib/auth-context", () => ({
 vi.mock("@/lib/workspace-context", () => ({
   useWorkspace: () => ({ currentWorkspace: { id: 1, name: "WS", role: "owner" } }),
 }));
+// mapbox-gl needs a real WebGL context, which jsdom doesn't provide — this
+// page's map rendering is covered by TransportMap's own tests, not these.
+vi.mock("./transport/TransportMap", () => ({
+  default: () => <div data-testid="transport-map" />,
+  PIN_COLOR: {
+    assigned: "#6b7280",
+    to_pickup: "#2563eb",
+    loaded: "#4f46e5",
+    in_transit: "#d97706",
+    delivered: "#16a34a",
+    offline: "#dc2626",
+  },
+}));
 
 describe("Storage page", () => {
   it("switches between inventory, inbound, outbound and packing lists", () => {

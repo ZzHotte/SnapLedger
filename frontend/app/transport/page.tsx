@@ -7,7 +7,8 @@ import { Button, ButtonLink } from "@/components/ui/Button";
 import Badge, { PreviewNotice, type BadgeTone } from "@/components/ui/Badge";
 import SegmentedControl from "@/components/ui/SegmentedControl";
 import StatTile from "@/components/ui/StatTile";
-import { MAP_BOUNDS, TRIPS, type Trip, type TripStatus } from "./sample-data";
+import { TRIPS, type Trip, type TripStatus } from "./sample-data";
+import TransportMap, { PIN_COLOR } from "./TransportMap";
 
 type Filter = "active" | "all" | "offline";
 
@@ -20,15 +21,6 @@ const STATUS_TONE: Record<TripStatus, BadgeTone> = {
   offline: "red",
 };
 
-const PIN_COLOR: Record<TripStatus, string> = {
-  assigned: "#6b7280",
-  to_pickup: "#2563eb",
-  loaded: "#4f46e5",
-  in_transit: "#d97706",
-  delivered: "#16a34a",
-  offline: "#dc2626",
-};
-
 function statusLabel(s: TripStatus): string {
   return s.replace("_", " ").replace(/^\w/, (c) => c.toUpperCase());
 }
@@ -38,64 +30,6 @@ function minutesAgo(iso: string): string {
   if (mins < 1) return "just now";
   if (mins < 60) return `${mins} min ago`;
   return `${Math.floor(mins / 60)} h ${mins % 60} min ago`;
-}
-
-// Equirectangular projection into the placeholder canvas — good enough for a
-// metro-sized box; the real map (Mapbox/MapLibre) replaces this entirely.
-function project(lat: number, lng: number): { x: number; y: number } {
-  const x = ((lng - MAP_BOUNDS.west) / (MAP_BOUNDS.east - MAP_BOUNDS.west)) * 100;
-  const y = ((MAP_BOUNDS.north - lat) / (MAP_BOUNDS.north - MAP_BOUNDS.south)) * 100;
-  return { x, y };
-}
-
-function MapCanvas({ trips, selectedId, onSelect }: { trips: Trip[]; selectedId: string | null; onSelect: (id: string) => void }) {
-  return (
-    <div className="relative h-full min-h-[420px] overflow-hidden rounded-lg border border-gray-200 bg-[#eef2f5]">
-      <svg className="absolute inset-0 h-full w-full" aria-hidden="true">
-        <defs>
-          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#dde3ea" strokeWidth="1" />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#grid)" />
-      </svg>
-      {/* Stylised Port Phillip Bay so the canvas reads as "Melbourne", not a blank grid. */}
-      <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-        <path d="M 30 100 Q 38 70 45 62 Q 52 58 60 64 Q 66 75 62 100 Z" fill="#cfe0ee" />
-      </svg>
-
-      {trips.map((t) => {
-        const { x, y } = project(t.lat, t.lng);
-        const selected = t.id === selectedId;
-        return (
-          <button
-            key={t.id}
-            onClick={() => onSelect(t.id)}
-            aria-label={`${t.vehicle} — ${statusLabel(t.status)}`}
-            className="group absolute -translate-x-1/2 -translate-y-1/2"
-            style={{ left: `${x}%`, top: `${y}%` }}
-          >
-            <span
-              className={`block rounded-full border-2 border-white shadow transition-transform ${selected ? "h-5 w-5 scale-110" : "h-3.5 w-3.5 group-hover:scale-125"}`}
-              style={{ background: PIN_COLOR[t.status] }}
-            />
-            {t.status === "in_transit" && (
-              <span className="absolute inset-0 -z-10 animate-ping rounded-full opacity-40" style={{ background: PIN_COLOR[t.status] }} />
-            )}
-            <span
-              className={`absolute top-full left-1/2 mt-1 -translate-x-1/2 rounded bg-white px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap shadow-sm ${selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-            >
-              {t.driver}
-            </span>
-          </button>
-        );
-      })}
-
-      <div className="absolute bottom-3 left-3 rounded-md bg-white/90 px-2.5 py-1.5 text-[11px] text-gray-500 shadow-sm">
-        Map tiles not connected — pin positions are projected from sample GPS pings.
-      </div>
-    </div>
-  );
 }
 
 function TripDetail({ trip }: { trip: Trip }) {
@@ -224,7 +158,7 @@ export default function TransportPage() {
           {selected && <TripDetail trip={selected} />}
         </div>
 
-        <MapCanvas trips={visible} selectedId={selectedId} onSelect={setSelectedId} />
+        <TransportMap trips={visible} selectedId={selectedId} onSelect={setSelectedId} />
       </div>
     </main>
   );
