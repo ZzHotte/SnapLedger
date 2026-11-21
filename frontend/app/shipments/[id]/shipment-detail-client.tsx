@@ -247,7 +247,7 @@ export default function ShipmentDetailClient({ shipmentId }: { shipmentId: numbe
   const inputClass = "rounded-md border border-gray-300 px-2 py-1.5 text-sm";
 
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 p-6">
+    <main className="mx-auto flex w-full max-w-screen-2xl flex-1 flex-col gap-6 p-6">
       <div>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

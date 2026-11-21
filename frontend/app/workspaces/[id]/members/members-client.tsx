@@ -86,7 +86,7 @@ export default function MembersPageClient({ workspaceId }: { workspaceId: number
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-6">
+    <main className="mx-auto flex w-full max-w-screen-2xl flex-1 flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Team members</h1>
         <Link href="/" className="text-sm text-gray-500 underline">
