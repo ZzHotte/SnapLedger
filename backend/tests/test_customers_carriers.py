@@ -50,6 +50,56 @@ async def test_create_and_list_customers(client):
     assert names == ["Acme Corp"]
 
 
+async def test_reorder_customers_persists_order(client):
+    token = await _register(client, "owner6@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    ids = []
+    for name in ("Acme Corp", "Bravo Ltd", "Charlie Inc"):
+        resp = await client.post("/customers", headers=headers, json={"name": name})
+        ids.append(resp.json()["id"])
+
+    # Default order is alphabetical, so this is a real reshuffle.
+    new_order = [ids[2], ids[0], ids[1]]
+    reorder_resp = await client.patch("/customers/reorder", headers=headers, json={"customer_ids": new_order})
+    assert reorder_resp.status_code == 204
+
+    list_resp = await client.get("/customers", headers=headers)
+    assert [c["id"] for c in list_resp.json()] == new_order
+
+
+async def test_reorder_customers_rejects_mismatched_ids(client):
+    token = await _register(client, "owner7@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    create_resp = await client.post("/customers", headers=headers, json={"name": "Acme Corp"})
+    real_id = create_resp.json()["id"]
+
+    resp = await client.patch(
+        "/customers/reorder", headers=headers, json={"customer_ids": [real_id, real_id + 999]}
+    )
+    assert resp.status_code == 400
+
+
+async def test_viewer_cannot_reorder_customers(client):
+    owner_token = await _register(client, "owner8@example.com")
+    workspace_id = await _workspace_id(client, owner_token)
+    create_resp = await client.post(
+        f"/customers?workspace_id={workspace_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"name": "Acme Corp"},
+    )
+    customer_id = create_resp.json()["id"]
+    viewer_token = await _add_member(client, workspace_id, "viewer8@example.com", WorkspaceRole.viewer)
+
+    resp = await client.patch(
+        f"/customers/reorder?workspace_id={workspace_id}",
+        headers={"Authorization": f"Bearer {viewer_token}"},
+        json={"customer_ids": [customer_id]},
+    )
+    assert resp.status_code == 403
+
+
 async def test_viewer_cannot_create_customer(client):
     owner_token = await _register(client, "owner2@example.com")
     workspace_id = await _workspace_id(client, owner_token)

@@ -136,6 +136,7 @@ class Customer(Base):
     contact_name: Mapped[str | None] = mapped_column(String(255))
     contact_email: Mapped[str | None] = mapped_column(String(255))
     contact_phone: Mapped[str | None] = mapped_column(String(50))
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

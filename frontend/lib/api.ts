@@ -190,6 +190,13 @@ export function createCustomer(
   });
 }
 
+export function reorderCustomers(workspaceId: number, customerIds: number[]) {
+  return request<void>(`/customers/reorder?workspace_id=${workspaceId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ customer_ids: customerIds }),
+  });
+}
+
 export interface Carrier {
   id: number;
   name: string;
